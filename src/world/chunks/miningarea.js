@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import Viewport from '../../core/viewport.js';
 import Camera, { CameraController } from '../../core/camera.js';
 import Lighting from '../../core/lighting.js';
-import Character from '../../core/logic/charatcer.js';
+import Character from '../../core/logic/character.js';
 import CharacterMovement from '../../core/logic/charactermovement.js';
 
 export default class MiningArea {
