@@ -11,8 +11,8 @@ import { register as registerMining } from '../world/chunks/miningarea.js';
 
 export default class WorldEngine {
   constructor(scene, {
-    CHUNK_SIZE = 50,
-    TILE_SIZE = 10,
+    CHUNK_SIZE = 50,   // 50 world units
+    TILE_SIZE  = 1,    // 1×1 tiles
     ACTIVE_HALF = 50,
     PRELOAD_RING_TILES = 5
   } = {}) {
@@ -35,7 +35,7 @@ export default class WorldEngine {
 
     this.chunks = new Map();
     this.tiles = [];
-    this._tileMap = new Map(); // ✨ NEW: For quick lookup of tiles by grid coordinates
+    this._tileMap = new Map();
     this._materials = new Map();
     this._kindSpawners = new Map();
 
@@ -53,10 +53,10 @@ export default class WorldEngine {
   buildTiles() {
     this.tiles = [];
     this._tileMap.clear();
-    let globalGridX = 0;
 
-    // Sort chunks to build grid consistently
-    const sortedChunks = [...this.chunks.values()].sort((a,b) => (a.cz * 1000 + a.cx) - (b.cz * 1000 + b.cx));
+    const sortedChunks = [...this.chunks.values()].sort(
+      (a,b) => (a.cz * 1000 + a.cx) - (b.cz * 1000 + b.cx)
+    );
 
     for (const { kind, cx, cz } of sortedChunks) {
       const originX = cx * this.CHUNK_SIZE;
@@ -67,8 +67,7 @@ export default class WorldEngine {
         for (let tx = 0; tx < this.TILES_PER_CHUNK; tx++) {
           const worldX = originX - half + (tx + 0.5) * this.TILE_SIZE;
           const worldZ = originZ - half + (tz + 0.5) * this.TILE_SIZE;
-          
-          // ✨ NEW: Unique grid coordinates for pathfinding
+
           const gridX = cx * this.TILES_PER_CHUNK + tx;
           const gridZ = cz * this.TILES_PER_CHUNK + tz;
 
@@ -77,7 +76,8 @@ export default class WorldEngine {
             center: new THREE.Vector3(worldX, 0, worldZ),
             mesh: null,
             state: 'none',
-            isWalkable: true, // ✨ NEW: Property for pathfinding
+            isWalkable: true,
+            userData: {}
           };
 
           this.tiles.push(tile);
@@ -87,22 +87,20 @@ export default class WorldEngine {
     }
   }
 
-  // ✨ NEW: Helper to get a tile from a world position
+  // Robust world->grid mapping that matches buildTiles centers
   getTileAt(worldPosition) {
-    const gridX = Math.round((worldPosition.x / this.TILE_SIZE) - 0.5);
-    const gridZ = Math.round((worldPosition.z / this.TILE_SIZE) - 0.5);
+    const off = (this.TILES_PER_CHUNK / 2) - 0.5; // e.g., 24.5 when 50 tiles
+    const gridX = Math.round((worldPosition.x / this.TILE_SIZE) + off);
+    const gridZ = Math.round((worldPosition.z / this.TILE_SIZE) + off);
     return this._tileMap.get(`${gridX},${gridZ}`);
   }
 
-  // ✨ NEW: Helper to get neighboring tiles for the pathfinder
   getNeighbors(tile) {
     const neighbors = [];
-    const directions = [[0, 1], [0, -1], [1, 0], [-1, 0]]; // N, S, E, W
-    for (const [dx, dz] of directions) {
-      const neighbor = this._tileMap.get(`${tile.gridX + dx},${tile.gridZ + dz}`);
-      if (neighbor) {
-        neighbors.push(neighbor);
-      }
+    const dirs = [[0,1],[0,-1],[1,0],[-1,0]];
+    for (const [dx,dz] of dirs) {
+      const n = this._tileMap.get(`${tile.gridX + dx},${tile.gridZ + dz}`);
+      if (n) neighbors.push(n);
     }
     return neighbors;
   }
@@ -115,10 +113,8 @@ export default class WorldEngine {
       const center = new THREE.Vector3(cx * this.CHUNK_SIZE, 0, cz * this.CHUNK_SIZE);
       for (const fn of spawners) {
         const p = Promise.resolve(fn({ scene: this.entities, center, cx, cz, world: this }))
-          .then((maybeGroup) => {
-            if (maybeGroup?.isObject3D) this.entities.add(maybeGroup);
-          })
-          .catch((err) => console.warn(`[WorldEngine] spawner for kind '${kind}' failed:`, err));
+          .then((maybeGroup) => { if (maybeGroup?.isObject3D) this.entities.add(maybeGroup); })
+          .catch((err) => console.warn(`[WorldEngine] spawner for '${kind}' failed:`, err));
         tasks.push(p);
       }
     }
@@ -162,15 +158,10 @@ export default class WorldEngine {
   }
 
   _getMaterial(tile, state) {
-    const key = `${tile.kind}:${state}:${tile.isWalkable}`;
+    const key = `${tile.kind}:${state}:${tile.isWalkable}:${tile.userData.isDirt?1:0}`;
     if (this._materials.has(key)) return this._materials.get(key);
-    
-    let color = this._colorFor(tile.kind);
-    // ✨ NEW: Visually distinguish unwalkable tiles (optional, for debugging)
-    // if (!tile.isWalkable) {
-    //   color = color.clone().lerp(new THREE.Color('red'), 0.25);
-    // }
-    
+
+    const color = this._colorFor(tile);
     let mat;
     if (state === 'active') {
       mat = new THREE.MeshStandardMaterial({ color, roughness: 1, metalness: 0 });
@@ -182,17 +173,18 @@ export default class WorldEngine {
     return mat;
   }
 
-  _colorFor(kind) {
-    if (kind === 'desert' || kind === 'mining') return Desert.baseColor.clone();
-    return Desert.baseColor.clone();
+  _colorFor(tile) {
+    const sand = Desert.baseColor.clone();
+    const dirt = new THREE.Color('#8b5a2b'); // brown
+    if (tile.userData?.isDirt) return dirt;
+    return sand;
   }
 
-  dispose() { /* ... unchanged ... */ }
+  dispose() { /* as-is */ }
 }
 
 /** Loader entrypoint */
 export async function show({ rootId = 'game-root' } = {}) {
-  // ... Root, View, Scene setup ... (unchanged)
   let root = document.getElementById(rootId);
   if (!root) { root = document.createElement('div'); root.id = rootId; document.body.appendChild(root); }
   const viewport = new Viewport({ root });
@@ -208,41 +200,36 @@ export async function show({ rootId = 'game-root' } = {}) {
   viewport.start();
   const orbitController = new CameraController(viewport.domElement, camera);
 
-  // World + chunks
-  const world = new WorldEngine(scene, { TILE_SIZE: 10 });
+  // 1×1 tiles
+  const world = new WorldEngine(scene, { TILE_SIZE: 1 });
 
-  // Register chunks
+  // chunks
   world.registerChunk('mining', 0, 0);
   world.registerChunk('desert',  1,  0);
   world.registerChunk('desert', -1,  0);
   world.registerChunk('desert',  0,  1);
   world.registerChunk('desert',  0, -1);
-  
-  // Let the mining chunk register its content
+
+  // mining area marks 20×20 dirt and places 6 spaced rocks
   registerMining(world);
 
   world.buildTiles();
   await world.spawnStaticContent();
 
-  // Character
-  // ✨ UPDATED: Character constructor no longer needs the entities group.
   const character = new Character(scene);
   await character.init(new THREE.Vector3(0, 0, 2));
   camera.setTarget(character.object);
   camera.handleResize();
 
-  // Tap-to-move controller
-  // ✨ UPDATED: Pass the `world` instance to the movement controller for pathfinding.
   const movement = new CharacterMovement(
     viewport.domElement,
     { scene },
     camera,
     character,
     world.getLandscapeProxy(),
-    world // Pass world
+    world
   );
 
-  // Tile LOD updates
   const step = () => {
     if (character.object) world.update(character.object.position);
     requestAnimationFrame(step);
@@ -251,5 +238,5 @@ export async function show({ rootId = 'game-root' } = {}) {
 
   window.addEventListener('resize', () => camera.handleResize(), { passive: true });
   window.Dustborne = Object.assign(window.Dustborne || {}, { world, movement });
-  console.log('WorldEngine: Initialized with pathfinding.');
+  console.log('WorldEngine: 50×50 @ 1×1, central 20×20 dirt, 6 spaced rocks, A* live.');
 }
