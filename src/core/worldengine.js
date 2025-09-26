@@ -224,7 +224,8 @@ export async function show({ rootId = 'game-root' } = {}) {
   await world.spawnStaticContent(); // place rocks, etc.
 
   // Character
-  const character = new Character(scene);
+  // ✨ UPDATED: Pass the `world.entities` group to the character for collision detection.
+  const character = new Character(scene, world.entities);
   await character.init(new THREE.Vector3(0, 0, 2));
   camera.setTarget(character.object);
   camera.handleResize();
