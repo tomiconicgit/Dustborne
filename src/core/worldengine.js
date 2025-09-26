@@ -6,43 +6,37 @@ import Lighting from './lighting.js';
 import Character from './logic/character.js';
 import CharacterMovement from './logic/charactermovement.js';
 import Desert from '../world/chunks/desert.js';
+import Sky from '../world/assets/sky/sky.js';
 
 export default class WorldEngine {
   constructor(scene, {
     CHUNK_SIZE = 50,
     TILE_SIZE = 10,
-    ACTIVE_HALF = 50,          // 100x100 active area around player
-    PRELOAD_RING_TILES = 5     // 5-tile ring beyond active
+    ACTIVE_HALF = 50,
+    PRELOAD_RING_TILES = 5
   } = {}) {
     this.scene = scene;
 
-    // Terrain group
     this.group = new THREE.Group();
     this.group.name = 'LandscapeTiles';
     this.scene.add(this.group);
 
-    // Tiling
     this.CHUNK_SIZE = CHUNK_SIZE;
     this.TILE_SIZE = TILE_SIZE;
     this.TILES_PER_CHUNK = Math.floor(CHUNK_SIZE / TILE_SIZE);
 
-    // Ranges
-    this.ACTIVE_HALF = ACTIVE_HALF;                                        // 50
-    this.PRELOAD_HALF = ACTIVE_HALF + PRELOAD_RING_TILES * TILE_SIZE;      // 100
+    this.ACTIVE_HALF = ACTIVE_HALF;
+    this.PRELOAD_HALF = ACTIVE_HALF + PRELOAD_RING_TILES * TILE_SIZE;
 
-    // Registries
-    this.chunks = new Map();   // key "cx,cz" -> { kind, cx, cz }
-    this.tiles = [];           // [{kind,cx,cz,tx,tz,center,mesh,state}]
+    this.chunks = new Map();
+    this.tiles = [];
     this._materials = new Map();
 
-    // Shared geometry
     this._tileGeo = new THREE.PlaneGeometry(this.TILE_SIZE, this.TILE_SIZE);
     this._tileGeo.rotateX(-Math.PI / 2);
   }
 
-  registerChunk(kind, cx, cz) {
-    this.chunks.set(`${cx},${cz}`, { kind, cx, cz });
-  }
+  registerChunk(kind, cx, cz) { this.chunks.set(`${cx},${cz}`, { kind, cx, cz }); }
 
   buildTiles() {
     this.tiles = [];
@@ -59,7 +53,7 @@ export default class WorldEngine {
             kind, cx, cz, tx, tz,
             center: new THREE.Vector3(cxWorld, 0, czWorld),
             mesh: null,
-            state: 'none' // 'active' | 'preload' | 'none'
+            state: 'none'
           });
         }
       }
@@ -124,7 +118,7 @@ export default class WorldEngine {
   }
 
   _colorFor(kind) {
-    // Mining floor = same as desert
+    // Mining floor uses same color as desert
     if (kind === 'desert' || kind === 'mining') return Desert.baseColor.clone();
     return Desert.baseColor.clone();
   }
@@ -141,7 +135,7 @@ export default class WorldEngine {
   }
 }
 
-/** Entrypoint for the loader (was in miningarea.js before) */
+/** Loader entrypoint */
 export async function show({ rootId = 'game-root' } = {}) {
   // Root
   let root = document.getElementById(rootId);
@@ -153,9 +147,10 @@ export async function show({ rootId = 'game-root' } = {}) {
   viewport.renderer.shadowMap.enabled = true;
   viewport.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-  // Scene + lighting
+  // Scene + lighting + sky
   const scene = new THREE.Scene();
   const lighting = new Lighting(scene);
+  const sky = new Sky(scene, lighting); // ← added
 
   // Camera + orbit
   const camera = new Camera();
@@ -166,10 +161,7 @@ export async function show({ rootId = 'game-root' } = {}) {
 
   // World + chunks (mining center + desert ring)
   const world = new WorldEngine(scene, {
-    CHUNK_SIZE: 50,
-    TILE_SIZE: 10,
-    ACTIVE_HALF: 50,
-    PRELOAD_RING_TILES: 5
+    CHUNK_SIZE: 50, TILE_SIZE: 10, ACTIVE_HALF: 50, PRELOAD_RING_TILES: 5
   });
   world.registerChunk('mining', 0, 0);
   world.registerChunk('desert',  1,  0);
@@ -209,8 +201,8 @@ export async function show({ rootId = 'game-root' } = {}) {
 
   // Debug
   window.Dustborne = Object.assign(window.Dustborne || {}, {
-    viewport, scene, lighting, camera, orbitController, world, character, movement
+    viewport, scene, lighting, sky, camera, orbitController, world, character, movement
   });
 
-  console.log('WorldEngine booted: mining at (0,0) with desert ring; world engine owns camera/viewport/character.');
+  console.log('WorldEngine booted with Sky.');
 }
