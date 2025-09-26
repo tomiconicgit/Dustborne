@@ -23,7 +23,8 @@ export default class Debugger {
         this.container = document.createElement('div');
         Object.assign(this.container.style, {
             position: 'fixed', bottom: '0', left: '0',
-            width: '100%', maxHeight: '40vh', zIndex: '9999',
+            width: '100%', maxHeight: '40vh', 
+            zIndex: '99999', /* Changed: Higher z-index to be always on top */
             display: 'flex', flexDirection: 'column',
             fontFamily: '"Roboto Mono", monospace', fontSize: '13px',
             backgroundColor: 'rgba(0, 0, 0, 0.8)',
@@ -31,6 +32,7 @@ export default class Debugger {
             backdropFilter: 'blur(5px)',
             transition: 'transform 0.3s ease-in-out',
             transform: 'translateY(0)',
+            pointerEvents: 'auto', /* Added: Allow interaction with the debugger */
         });
         
         // Toolbar for buttons
