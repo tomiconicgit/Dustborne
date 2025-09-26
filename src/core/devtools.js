@@ -6,18 +6,18 @@ export default class DevTools {
     this.scene = scene;
     this.world = world;
 
-    // If caller passed a <canvas>, fall back to <body> (canvas can't show DOM children)
+    // If a <canvas> was passed, fall back to <body>
     if (!domOverlayParent || String(domOverlayParent.tagName).toLowerCase() === 'canvas') {
       domOverlayParent = document.body;
     }
 
-    // Overlay group (grid + markers)
+    // Overlay group
     this.group = new THREE.Group();
     this.group.name = 'DevGridOverlay';
     this.group.visible = false;
     this.scene.add(this.group);
 
-    // Toggle button (mobile friendly, safe-area aware)
+    // Toggle button
     this.button = document.createElement('button');
     this.button.textContent = 'Grid';
     this.button.setAttribute('aria-label', 'Toggle grid/blocked overlay');
@@ -34,7 +34,7 @@ export default class DevTools {
       borderRadius: '10px',
       opacity: '0.9',
       boxShadow: '0 2px 8px rgba(0,0,0,.35)',
-      -webkitTapHighlightColor: 'transparent'
+      '-webkitTapHighlightColor': 'transparent' // <-- MUST be quoted
     });
     this.button.addEventListener('click', () => {
       this.group.visible = !this.group.visible;
@@ -51,10 +51,7 @@ export default class DevTools {
     }
   }
 
-  /**
-   * Builds grid lines for the primary 50×50 chunk and draws red X on blocked tiles.
-   * Call again after you change rock placement: window.Dustborne?.devtools?.build()
-   */
+  // Build grid lines + red X on blocked tiles
   build() {
     this.clear();
 
@@ -62,29 +59,25 @@ export default class DevTools {
     const SIZE = this.world.CHUNK_SIZE;  // 50
     const HALF = SIZE * 0.5;
 
-    // --- Grid lines ---
+    // Grid lines
     const gridGeom = new THREE.BufferGeometry();
     const verts = [];
-
-    // 51 lines each way to outline 50 cells
     for (let i = 0; i <= SIZE; i++) {
       const x = -HALF + i * TILE;
       verts.push(x, 0.001, -HALF,  x, 0.001,  HALF);  // vertical
       const z = -HALF + i * TILE;
       verts.push(-HALF, 0.001, z,  HALF, 0.001, z);   // horizontal
     }
-
     gridGeom.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
     const gridMat = new THREE.LineBasicMaterial({ color: 0x333333, transparent: true, opacity: 0.85 });
     const gridLines = new THREE.LineSegments(gridGeom, gridMat);
     gridLines.renderOrder = 9999;
     this.group.add(gridLines);
 
-    // --- Blocked markers ---
+    // Blocked markers (red X)
     const xGeom = new THREE.BufferGeometry();
     const xVerts = [];
     const o = 0.35;
-
     for (const t of this.world.tiles) {
       if (!t.isWalkable) {
         const cx = t.center.x, cz = t.center.z, y = 0.002;
@@ -94,7 +87,6 @@ export default class DevTools {
         );
       }
     }
-
     if (xVerts.length) {
       xGeom.setAttribute('position', new THREE.Float32BufferAttribute(xVerts, 3));
       const xMat = new THREE.LineBasicMaterial({ color: 0xff3333, transparent: true, opacity: 1.0 });
