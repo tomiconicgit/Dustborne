@@ -119,8 +119,6 @@ class LoadingManager {
     (console[consoleLevel] || console.log).call(console, `[LoadingManager] ${message}`);
   }
 
-
-
   fail(error, task) {
     if (this.hasFailed) return;
     this.hasFailed = true;
@@ -198,27 +196,30 @@ class LoadingManager {
   _createDOM() {
     const wrap = document.createElement('div');
     wrap.id = 'dustborne-loading-screen';
+    // Added a content wrapper to ensure UI stays above the new animated pseudo-elements
     wrap.innerHTML = `
-      <div class="db-center">
-        <h1 class="db-brand" aria-label="Dustborne">Dustborne</h1>
-      
-        <span id="dustborne-loading-status" class="sr-only">Initializing…</span>
+      <div class="db-content-wrap">
+        <div class="db-center">
+          <h1 class="db-brand" aria-label="Dustborne">Dustborne</h1>
+        
+          <span id="dustborne-loading-status" class="sr-only">Initializing…</span>
 
-        <div id="dustborne-loading-bar-container" class="db-bar-outer"
-             role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"
-             aria-label="Loading progress">
-          <div id="dustborne-loading-bar" class="db-bar-fill"></div>
-          <div id="dustborne-bar-label" class="db-bar-label">0%</div>
+          <div id="dustborne-loading-bar-container" class="db-bar-outer"
+               role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"
+               aria-label="Loading progress">
+            <div id="dustborne-loading-bar" class="db-bar-fill"></div>
+            <div id="dustborne-bar-label" class="db-bar-label">0%</div>
+          </div>
+
+          <div class="db-controls" aria-live="polite">
+            <button id="dustborne-start-button" class="db-btn db-btn-primary" disabled aria-disabled="true">Start Game</button>
+            <button id="dustborne-copy-errors-btn" class="db-btn db-btn-ghost" aria-label="Copy errors">Copy Errors</button>
+          </div>
         </div>
 
-        <div class="db-controls" aria-live="polite">
-          <button id="dustborne-start-button" class="db-btn db-btn-primary" disabled aria-disabled="true">Start Game</button>
-          <button id="dustborne-copy-errors-btn" class="db-btn db-btn-ghost" aria-label="Copy errors">Copy Errors</button>
+        <div class="db-debug-card" role="region" aria-label="Log">
+          <div id="dustborne-log-container" class="db-log"></div>
         </div>
-      </div>
-
-      <div class="db-debug-card" role="region" aria-label="Log">
-        <div id="dustborne-log-container" class="db-log"></div>
       </div>
     `;
     document.body.appendChild(wrap);
@@ -232,20 +233,27 @@ class LoadingManager {
         font-weight: 700; font-style: normal; font-display: swap;
       }
 
+      /* Keyframes for the floating dust animation */
+      @keyframes float-slow {
+        0% { transform: translate(0, 0); }
+        50% { transform: translate(20px, -25px); opacity: 1; }
+        100% { transform: translate(0, 0); }
+      }
+      @keyframes float-fast {
+        0% { transform: translate(0, 0); }
+        50% { transform: translate(-30px, 20px); opacity: 0.5; }
+        100% { transform: translate(0, 0); }
+      }
+
       :root {
-        /* Sandy/Brown Theme */
-        --db-bg: #1a1612; /* Dark brown */
-        --db-text: #f5eeda; /* Warm off-white */
-        --db-subtle: #c3b8a5; /* Muted sand */
-        --db-stroke: rgba(245, 238, 218, 0.1); /* Warm stroke */
-        
-        /* Standard Green & Red */
+        --db-bg: #1a1612;
+        --db-text: #f5eeda;
+        --db-subtle: #c3b8a5;
+        --db-stroke: rgba(245, 238, 218, 0.1);
         --db-green: #28a745;
         --db-green-glow: rgba(40, 167, 69, 0.45);
         --db-red: #dc3545;
         --db-red-glow: rgba(220, 53, 69, 0.45);
-        
-        /* Original blue for progress bar before completion */
         --db-blue: #42a5ff;
         --db-blue-glow: rgba(66,165,255,0.45);
       }
@@ -254,7 +262,6 @@ class LoadingManager {
 
       #dustborne-loading-screen {
         position: fixed; inset: 0; z-index: 10000;
-        display: flex; flex-direction: column; align-items: center;
         background: radial-gradient(1200px 800px at 20% 10%, rgba(210, 180, 140, 0.12), transparent 60%),
                     radial-gradient(900px 600px at 80% 90%, rgba(139, 69, 19, 0.1), transparent 55%),
                     var(--db-bg);
@@ -262,8 +269,49 @@ class LoadingManager {
         font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
         opacity: 1; visibility: visible; transition: opacity .9s ease, visibility .9s ease;
         padding: 24px 12px;
+        position: relative; /* Needed for pseudo-elements */
+        overflow: hidden; /* Hide overflowing dust particles */
       }
       #dustborne-loading-screen.fade-out { opacity: 0; visibility: hidden; pointer-events: none; }
+      
+      /* Dust particle layers */
+      #dustborne-loading-screen::before, #dustborne-loading-screen::after {
+        content: '';
+        position: absolute;
+        inset: -200px; /* Make layer larger than screen to hide edges during animation */
+        pointer-events: none;
+      }
+      /* Layer 1: Slower, larger, more subtle particles */
+      #dustborne-loading-screen::before {
+        background-image:
+          radial-gradient(3px 3px at 10% 40%, rgba(245, 238, 218, 0.1), transparent),
+          radial-gradient(2px 2px at 50% 20%, rgba(245, 238, 218, 0.15), transparent),
+          radial-gradient(3px 3px at 85% 60%, rgba(245, 238, 218, 0.1), transparent),
+          radial-gradient(2px 2px at 30% 90%, rgba(245, 238, 218, 0.15), transparent);
+        animation: float-slow 50s linear infinite;
+        z-index: 1;
+      }
+      /* Layer 2: Faster, smaller, brighter particles */
+      #dustborne-loading-screen::after {
+        background-image:
+          radial-gradient(1px 1px at 20% 15%, rgba(245, 238, 218, 0.3), transparent),
+          radial-gradient(1px 1px at 70% 35%, rgba(245, 238, 218, 0.3), transparent),
+          radial-gradient(2px 2px at 40% 70%, rgba(245, 238, 218, 0.25), transparent),
+          radial-gradient(1px 1px at 90% 85%, rgba(245, 238, 218, 0.3), transparent);
+        animation: float-fast 35s linear infinite;
+        z-index: 2;
+      }
+
+      /* Content wrapper to keep UI above animations */
+      .db-content-wrap {
+        position: relative;
+        z-index: 10;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
 
       .db-brand {
         font-family: 'Druk Wide', Impact, 'Arial Black', system-ui, sans-serif;
@@ -283,13 +331,10 @@ class LoadingManager {
       }
 
       .db-bar-outer {
-        width: min(92vw, 760px); height: 14px; /* thicker */
+        width: min(92vw, 760px); height: 14px;
         background: rgba(255,255,255,0.06);
         border: 1px solid var(--db-stroke);
-        border-radius: 999px;
-        padding: 2px;
-        overflow: hidden;
-        position: relative;
+        border-radius: 999px; padding: 2px; overflow: hidden; position: relative;
         box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
       }
       .db-bar-fill {
@@ -312,68 +357,77 @@ class LoadingManager {
         position: absolute; inset: 0;
         display: grid; place-items: center;
         font-size: 12px; font-weight: 700; letter-spacing: .4px;
-        color: #0b1220; /* high contrast over the fill */
+        color: #0b1220;
         text-shadow: 0 1px 0 rgba(255,255,255,0.35);
         pointer-events: none;
       }
 
-      /* Controls row with reserved height to avoid layout shift */
       .db-controls {
-        width: min(92vw, 760px);
-        height: 48px; /* reserve space always */
+        width: min(92vw, 760px); height: 48px;
         display: flex; align-items: center; justify-content: center; gap: 12px;
       }
       .db-btn {
         appearance: none; border: 0; cursor: pointer;
         display: inline-flex; align-items: center; justify-content: center;
-        gap: 8px; padding: 10px 16px; border-radius: 12px;
-        font-weight: 700; letter-spacing: .2px;
-        transition: opacity .35s ease, visibility .35s ease, transform .08s ease, box-shadow .2s ease, background .2s ease;
+        gap: 8px; border-radius: 8px; /* Slightly sharper corners */
+        font-weight: 700;
+        transition: opacity .35s ease, visibility .35s ease, transform .15s ease, box-shadow .2s ease, background .2s ease, border-color .2s ease;
         will-change: opacity, transform;
-        opacity: 0; visibility: hidden; pointer-events: none; /* hidden by default, space kept by row */
+        opacity: 0; visibility: hidden; pointer-events: none;
       }
       .db-btn.show { opacity: 1; visibility: visible; pointer-events: auto; }
-      .db-btn:active { transform: translateY(1px); }
+      .db-btn:active {
+        transform: translateY(2px); /* More pronounced press effect */
+        filter: brightness(0.95);
+      }
 
       .db-btn-primary[disabled], .db-btn-primary[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
+      
+      /* --- REDESIGNED START BUTTON --- */
       .db-btn-primary {
-        color: #1a1612;
-        background: linear-gradient(180deg, #ffffff, #e0e0e0);
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255,255,255,0.8);
-        border: 1px solid rgba(0, 0, 0, 0.15);
+        color: var(--db-text);
+        background: #4a3f32; /* Muted dark brown */
+        font-size: 14px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        padding: 14px 28px;
+        border: 1px solid #7c6841;
+        box-shadow: inset 0 0 0 1px rgba(245, 238, 218, 0.1), 0 4px 12px rgba(0,0,0,0.5);
+        text-shadow: 0 1px 2px rgba(0,0,0,0.4);
       }
-      .db-btn-primary:not([disabled]):hover { 
-        background: linear-gradient(180deg, #ffffff, #efefef);
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255,255,255,0.9);
+      .db-btn-primary:not([disabled]):hover {
+        background: #5a4f42;
+        border-color: #a18a5b;
+        box-shadow: inset 0 0 0 1px rgba(245, 238, 218, 0.2), 0 6px 16px rgba(0,0,0,0.5);
+        transform: translateY(-1px);
       }
+      .db-btn-primary:active {
+        transform: translateY(1px);
+      }
+
 
       .db-btn-ghost {
         color: var(--db-text);
         background: rgba(255,255,255,0.06);
         border: 1px solid var(--db-stroke);
+        padding: 10px 16px;
       }
       .db-btn-ghost:hover { background: rgba(255,255,255,0.09); }
 
-      .btn-pressed { filter: brightness(.96); }
-
-      /* Floating debugger card at bottom */
+      /* Floating log card at bottom */
       .db-debug-card {
-        position: fixed; left: 50%; transform: translateX(-50%);
-        bottom: 16px;
+        position: fixed; left: 50%; transform: translateX(-50%); bottom: 16px;
         width: min(92vw, 760px);
         background: rgba(26, 22, 18, 0.7);
-        backdrop-filter: blur(14px) saturate(1.2);
-        -webkit-backdrop-filter: blur(14px) saturate(1.2);
-        border: 1px solid var(--db-stroke);
-        border-radius: 14px;
+        backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2);
+        border: 1px solid var(--db-stroke); border-radius: 14px;
         box-shadow: 0 14px 40px rgba(0,0,0,.45);
         overflow: hidden;
       }
       .db-log {
         max-height: 28vh; min-height: 120px;
         overflow: auto; padding: 10px 12px;
-        font-size: 12.5px; line-height: 1.55;
-        scrollbar-width: thin;
+        font-size: 12.5px; line-height: 1.55; scrollbar-width: thin;
       }
       .db-log p { margin: 0; padding: 2px 0; white-space: pre-wrap; display: flex; gap: 8px; }
       .log-timestamp { color: var(--db-subtle); flex-shrink: 0; }
