@@ -13,15 +13,23 @@ export default class CharacterMovement {
 
     this.touchState = { isDragging: false, startPos: new THREE.Vector2() };
 
-    // --- Walking animation state (owned here) ---
+    // --- Animation state (owned here) ---
     this.walkUrl = './src/assets/models/animations/walking.glb';
+    this.idleUrl = './src/assets/models/animations/idle.glb';
+
     this._mixer = null;
+
     this._walkClip = null;
     this._walkAction = null;
     this._walkPromise = null;
     this._isWalking = false;
 
-    // Track the current tap destination to know when to stop walking
+    this._idleClip = null;
+    this._idleAction = null;
+    this._idlePromise = null;
+    this._isIdling = false;
+
+    // Movement tracking (to know when to stop walk / start idle)
     this._activeDest = null;
     this._epsilon = 0.06;
 
@@ -41,24 +49,30 @@ export default class CharacterMovement {
       const dt = Math.min(0.05, (t - this._lastT) / 1000); // clamp dt
       this._lastT = t;
 
-      // ensure mixer exists once the character object is ready
+      // Ensure mixer once the character is spawned
       if (!this._mixer && this.player?.object) {
         this._mixer = new THREE.AnimationMixer(this.player.object);
       }
 
-      // advance animation
+      // Drive animation
       if (this._mixer) this._mixer.update(dt);
 
-      // drive character movement/camera
+      // Drive character + camera
       this.player?.update(dt);
       this.camera?.update();
 
-      // stop walking when we arrive at destination (guarded by epsilon)
+      // Auto-start idle when not walking and model ready
+      if (this.player?.object && !this._activeDest && !this._isWalking && !this._isIdling) {
+        this._startIdle(); // fire-and-forget; loads if needed
+      }
+
+      // Stop walk & return to idle on arrival
       if (this._activeDest && this.player?.object) {
         const pos = this.player.object.position;
         if (pos.distanceToSquared(this._activeDest) <= this._epsilon * this._epsilon) {
-          this._stopWalk();
           this._activeDest = null;
+          this._stopWalk();
+          this._startIdle();
         }
       }
 
@@ -73,6 +87,7 @@ export default class CharacterMovement {
     this.domElement.removeEventListener('touchmove',  this._onMove);
     this.domElement.removeEventListener('touchend',   this._onEnd);
     try { this._walkAction?.stop(); } catch {}
+    try { this._idleAction?.stop(); } catch {}
     this._mixer = null;
   }
 
@@ -135,40 +150,92 @@ export default class CharacterMovement {
     const yaw = Math.atan2(dest.x - pos.x, dest.z - pos.z);
     this.player.object.rotation.set(0, yaw, 0);
 
-    // Visual tap feedback (if provided by player)
+    // Visual tap feedback
     this.player.showTapMarkerAt?.(dest);
 
-    // Move the character (character.js owns the translation each frame)
-    this.player.cancelActions?.();    // stop mining etc.
+    // Move the character
+    this.player.cancelActions?.();
     this.player.moveTo?.(dest);
 
-    // Track destination locally to stop animation when we arrive
+    // Track destination to stop anim on arrival
     this._activeDest = dest.clone();
 
-    // Start walking animation
+    // Switch to walk animation
     await this._startWalk();
   }
 
   // ---- Animation utils ------------------------------------------------------
 
-  async _startWalk() {
+  async _startIdle() {
     if (!this.player?.object) return;
-
-    // Ensure mixer (in case character became ready just now)
     if (!this._mixer) this._mixer = new THREE.AnimationMixer(this.player.object);
 
-    // Ensure clip/action
+    if (!this._idleClip || !this._idleAction) {
+      await this._loadIdleClip();
+      if (!this._idleAction) return;
+    }
+
+    if (this._isIdling) return;
+
+    try {
+      this._idleAction.reset();
+      this._idleAction.enabled = true;
+
+      // Cross-fade from walk if needed
+      if (this._isWalking && this._walkAction) {
+        this._idleAction.play();
+        this._idleAction.crossFadeFrom(this._walkAction, 0.2, false);
+        // stop walk shortly after fade starts
+        setTimeout(() => { try { this._walkAction.stop(); } catch {} }, 220);
+        this._isWalking = false;
+      } else {
+        this._idleAction.fadeIn(0.15);
+        this._idleAction.play();
+      }
+
+      this._idleAction.timeScale = 1.0;
+      this._isIdling = true;
+    } catch (e) {
+      console.warn('[CharacterMovement] could not play idle:', e);
+    }
+  }
+
+  _stopIdle() {
+    if (!this._idleAction || !this._isIdling) return;
+    try {
+      this._idleAction.fadeOut(0.12);
+      setTimeout(() => { try { this._idleAction.stop(); } catch {} }, 140);
+    } catch {}
+    this._isIdling = false;
+  }
+
+  async _startWalk() {
+    if (!this.player?.object) return;
+    if (!this._mixer) this._mixer = new THREE.AnimationMixer(this.player.object);
+
     if (!this._walkClip || !this._walkAction) {
       await this._loadWalkClip();
-      if (!this._walkAction) return; // failed to load
+      if (!this._walkAction) return;
     }
 
     if (this._isWalking) return;
+
     try {
-      this._walkAction.reset();
-      this._walkAction.fadeIn(0.15);
-      this._walkAction.play();
-      this._walkAction.timeScale = 1.0; // tweak foot speed if desired
+      // Cross-fade from idle if needed
+      if (this._isIdling && this._idleAction) {
+        this._walkAction.reset();
+        this._walkAction.enabled = true;
+        this._walkAction.play();
+        this._walkAction.crossFadeFrom(this._idleAction, 0.2, false);
+        setTimeout(() => { try { this._idleAction.stop(); } catch {} }, 220);
+        this._isIdling = false;
+      } else {
+        this._walkAction.reset();
+        this._walkAction.fadeIn(0.15);
+        this._walkAction.play();
+      }
+
+      this._walkAction.timeScale = 1.0; // tweak for foot speed
       this._isWalking = true;
     } catch (e) {
       console.warn('[CharacterMovement] could not play walk:', e);
@@ -203,5 +270,26 @@ export default class CharacterMovement {
       console.warn('[CharacterMovement] Failed to load walking animation:', err);
     });
     return this._walkPromise;
+  }
+
+  async _loadIdleClip() {
+    if (this._idlePromise) return this._idlePromise;
+    const loader = new GLTFLoader();
+    this._idlePromise = loader.loadAsync(this.idleUrl).then(gltf => {
+      const clips = gltf.animations || [];
+      if (!clips.length) throw new Error('idle.glb contains no animations');
+      const named = clips.find(c => /idle/i.test(c.name));
+      this._idleClip = named || clips[0];
+
+      if (this._mixer && this._idleClip) {
+        this._idleAction = this._mixer.clipAction(this._idleClip);
+        this._idleAction.loop = THREE.LoopRepeat;
+        this._idleAction.clampWhenFinished = false;
+        this._idleAction.enabled = true;
+      }
+    }).catch(err => {
+      console.warn('[CharacterMovement] Failed to load idle animation:', err);
+    });
+    return this._idlePromise;
   }
 }
