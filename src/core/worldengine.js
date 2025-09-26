@@ -6,38 +6,37 @@ export default class WorldEngine {
   constructor(scene, {
     CHUNK_SIZE = 50,
     TILE_SIZE = 10,
-    ACTIVE_HALF = 50,          // 100x100 active area
-    PRELOAD_RING_TILES = 5     // 5-tile ring beyond active
+    ACTIVE_HALF = 50,          // 100x100 active area around player
+    PRELOAD_RING_TILES = 5     // 5-tile ring beyond active area
   } = {}) {
     this.scene = scene;
-    this.group = new THREE.Group();     // landscape group
+    this.group = new THREE.Group();
     this.group.name = 'LandscapeTiles';
     this.scene.add(this.group);
 
-    // dims
+    // geometry/tiling
     this.CHUNK_SIZE = CHUNK_SIZE;
     this.TILE_SIZE = TILE_SIZE;
     this.TILES_PER_CHUNK = Math.floor(CHUNK_SIZE / TILE_SIZE);
-    this.ACTIVE_HALF = ACTIVE_HALF; // 50
-    this.PRELOAD_HALF = ACTIVE_HALF + PRELOAD_RING_TILES * TILE_SIZE; // 100
 
-    // registry
-    this.chunks = new Map(); // key "cx,cz" -> { kind }
-    this.tiles = [];         // [{kind,cx,cz,tx,tz,center,mesh,state}]
+    // ranges (half-sizes)
+    this.ACTIVE_HALF = ACTIVE_HALF;                                        // 50
+    this.PRELOAD_HALF = ACTIVE_HALF + PRELOAD_RING_TILES * TILE_SIZE;      // 100
+
+    // registries
+    this.chunks = new Map();   // key "cx,cz" -> { kind, cx, cz }
+    this.tiles = [];           // [{kind,cx,cz,tx,tz,center,mesh,state}]
     this._materials = new Map();
 
-    // shared geo
+    // shared plane geometry for tiles
     this._tileGeo = new THREE.PlaneGeometry(this.TILE_SIZE, this.TILE_SIZE);
     this._tileGeo.rotateX(-Math.PI / 2);
   }
 
-  // Register a chunk at integer grid coords (0,0 is center)
   registerChunk(kind, cx, cz) {
-    const key = `${cx},${cz}`;
-    this.chunks.set(key, { kind, cx, cz });
+    this.chunks.set(`${cx},${cz}`, { kind, cx, cz });
   }
 
-  // Build tiles for all registered chunks
   buildTiles() {
     this.tiles = [];
     for (const { kind, cx, cz } of this.chunks.values()) {
@@ -61,10 +60,10 @@ export default class WorldEngine {
   }
 
   getLandscapeProxy() {
+    // lets input controllers raycast against terrain
     return { mesh: this.group };
   }
 
-  // Called each frame with player position
   update(playerPos) {
     const px = playerPos.x;
     const pz = playerPos.z;
@@ -85,19 +84,16 @@ export default class WorldEngine {
   }
 
   _applyState(tile, desired) {
-    // unload
     if (desired === 'none') {
       if (tile.mesh) {
         this.group.remove(tile.mesh);
         tile.mesh.geometry?.dispose();
-        // materials are shared/cached; don't dispose here
         tile.mesh = null;
       }
       tile.state = 'none';
       return;
     }
 
-    // ensure mesh
     if (!tile.mesh) {
       const mat = this._getMaterial(tile.kind, desired);
       const mesh = new THREE.Mesh(this._tileGeo.clone(), mat);
@@ -110,7 +106,6 @@ export default class WorldEngine {
       return;
     }
 
-    // swap material on state change
     tile.mesh.material = this._getMaterial(tile.kind, desired);
     tile.state = desired;
   }
@@ -123,8 +118,8 @@ export default class WorldEngine {
     let mat;
     if (state === 'active') {
       mat = new THREE.MeshStandardMaterial({ color, roughness: 1, metalness: 0 });
-    } else { // preload
-      // "blur placeholder": muted & semi-transparent
+    } else {
+      // preload “blur placeholder”: muted & semi-transparent
       const c = color.clone().lerp(new THREE.Color('#999999'), 0.35);
       mat = new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.55 });
     }
@@ -133,9 +128,10 @@ export default class WorldEngine {
   }
 
   _colorFor(kind) {
-    if (kind === 'desert') return Desert.baseColor.clone();
-    // mining default to border color
-    return new THREE.Color('#8B4513'); // mining border / earth
+    // Make mining use the SAME color as desert
+    if (kind === 'desert' || kind === 'mining') return Desert.baseColor.clone();
+    // fallback
+    return Desert.baseColor.clone();
   }
 
   dispose() {
