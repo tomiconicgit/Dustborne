@@ -1,237 +1,388 @@
 // file: loading.js
 
 class LoadingManager {
-    constructor() {
-        this._createStyles();
-        this._createDOM();
-        this._cacheDOMElements();
-        this.hasFailed = false;
-        this.loadedModules = new Map(); // To store the loaded modules.
-        this.log('Initializing Loading Manager...');
+  constructor() {
+    this.hasFailed = false;
+    this.errorCount = 0;
+    this.loadedModules = new Map();
+
+    this._createStyles();
+    this._createDOM();
+    this._cacheDOMElements();
+    this._wireGlobalErrorCapture();
+
+    this.log('Initializing Loading Manager…');
+  }
+
+  async start(EngineClass) {
+    const engineInstance = new EngineClass();
+    const delay = (ms) => new Promise(r => setTimeout(r, ms));
+
+    // --- PHASE 1: VALIDATION ---
+    this.log('Phase 1: Validating game files…');
+    const manifest = engineInstance.getFullManifest();
+    if (!manifest || manifest.length === 0) {
+      this.log('Manifest empty. Nothing to validate.', 'warn');
+    } else {
+      for (let i = 0; i < manifest.length; i++) {
+        const task = manifest[i];
+        const progress = ((i + 1) / manifest.length) * 100;
+        this._updateProgress(`Validating: ${task.name}`, progress);
+        await delay(120);
+        try {
+          await this._validateFile(task);
+        } catch (err) {
+          return this.fail(err, task);
+        }
+      }
     }
+    this.log('✔ Phase 1 complete.', 'success');
 
-    async start(EngineClass) {
-        const engineInstance = new EngineClass();
-        
-        // Helper function to introduce a small delay for visual feedback
-        const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+    // --- PHASE 2: LOAD INITIAL ASSETS ---
+    this.log('Phase 2: Loading initial assets…');
+    const initial = engineInstance.getInitialAssets();
+    if (!initial || initial.length === 0) {
+      this.log('No initial assets required.', 'warn');
+    } else {
+      for (let i = 0; i < initial.length; i++) {
+        const task = initial[i];
+        const progress = ((i + 1) / initial.length) * 100;
+        this._updateProgress(`Loading: ${task.name}`, progress);
+        await delay(160);
+        try {
+          const mod = await this._executeTask(task);
+          this.loadedModules.set(task.path, mod);
+        } catch (err) {
+          return this.fail(err, task);
+        }
+      }
+    }
+    this.log('✔ Phase 2 complete.', 'success');
 
-        // --- PHASE 1: VALIDATION SCAN ---
-        this.log('Starting Phase 1: Validating all game files...');
-        const fullManifest = engineInstance.getFullManifest();
-        if (!fullManifest || fullManifest.length === 0) {
-            this.log('Manifest is empty. Nothing to validate.', 'warn');
+    // 100% + green; reveal Start
+    this._updateProgress('Ready to start', 100, { complete: true });
+    this._showStartButton();
+  }
+
+  _showStartButton() {
+    this.startButton.disabled = false;
+    this.startButton.setAttribute('aria-disabled', 'false');
+    this.startButton.style.display = 'inline-flex';
+
+    // Ensure single binding
+    this.startButton.onclick = null;
+    this.startButton.addEventListener('click', () => {
+      // Guard double clicks
+      if (this.loadingScreen.classList.contains('fade-out')) return;
+
+      this.startButton.classList.add('btn-pressed');
+      this.loadingScreen.classList.add('fade-out');
+
+      const run = () => {
+        this.loadingScreen.remove();
+        const testModule = this.loadedModules.get('./src/core/test.js');
+        if (testModule && typeof testModule.show === 'function') {
+          try {
+            testModule.show();
+          } catch (err) {
+            console.error('Start screen handler threw:', err);
+          }
         } else {
-            for (let i = 0; i < fullManifest.length; i++) {
-                const task = fullManifest[i];
-                const progress = ((i + 1) / fullManifest.length) * 100;
-                this._updateProgress(`Validating: ${task.name}`, progress);
-                
-                await delay(150); // Artificial delay to make progress visible
-
-                try {
-                    await this._validateFile(task);
-                } catch (error) {
-                    return this.fail(error, task);
-                }
-            }
+          console.error("Could not find the 'show' function in ./src/core/test.js");
         }
-        this.log('✔ Phase 1 Complete: All files validated.', 'success');
+      };
 
-        // --- PHASE 2: TARGETED LOAD ---
-        this.log('Starting Phase 2: Loading initial assets...');
-        this._updateProgress('Loading required assets...', 0);
-        const initialAssets = engineInstance.getInitialAssets();
+      // Fallback in case transitionend isn’t fired on some iOS edge cases
+      let fired = false;
+      this.loadingScreen.addEventListener('transitionend', () => {
+        if (fired) return;
+        fired = true;
+        run();
+      }, { once: true });
+      setTimeout(() => { if (!fired) run(); }, 1200);
+    }, { once: true });
+  }
 
-        if (!initialAssets || initialAssets.length === 0) {
-            this.log('No initial assets required.', 'warn');
-        } else {
-            for (let i = 0; i < initialAssets.length; i++) {
-                const task = initialAssets[i];
-                const progress = ((i + 1) / initialAssets.length) * 100;
-                this._updateProgress(`Loading: ${task.name}`, progress);
+  async _validateFile(task) {
+    if (task.type === 'script') await import(task.path);
+  }
 
-                await delay(250); // Artificial delay to make progress visible
+  async _executeTask(task) {
+    if (task.type === 'script') return import(task.path);
+    throw new Error(`Unknown task type '${task.type}'`);
+  }
 
-                try {
-                    const loadedModule = await this._executeTask(task);
-                    this.loadedModules.set(task.path, loadedModule);
-                } catch (error) {
-                    return this.fail(error, task);
-                }
-            }
-        }
-        this.log('✔ Phase 2 Complete: Initial assets loaded.', 'success');
+  // --- UI & LOGGING ---------------------------------------------------------
+  log(message, level = 'info') {
+    if (!this.logContainer) return;
+    const timestamp = new Date().toLocaleTimeString([], {
+      hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3
+    });
 
-        // --- FINAL STEP: AWAIT USER INPUT ---
-        this._showStartButton();
-    }
-    
-    _showStartButton() {
-        this._updateProgress('Ready to start', 100);
-        this.startButton.style.display = 'block';
-        this.startButton.onclick = () => {
-            this.loadingScreen.classList.add('fade-out');
-            this.loadingScreen.addEventListener('transitionend', () => {
-                this.loadingScreen.remove();
-                // Find and execute the 'show' function from our loaded test module
-                const testModule = this.loadedModules.get('./src/core/test.js');
-                if (testModule && typeof testModule.show === 'function') {
-                    testModule.show();
-                } else {
-                    console.error("Could not find the 'show' function in the test module.");
-                }
-            }, { once: true });
-        };
+    const p = document.createElement('p');
+    p.className = `log-${level}`;
+    p.innerHTML = `<span class="log-timestamp">[${timestamp}]</span> ${message}`;
+    this.logContainer.appendChild(p);
+    this.logContainer.scrollTop = this.logContainer.scrollHeight;
+
+    if (level === 'error') {
+      this.errorCount++;
+      this.copyErrorsBtn.style.display = 'inline-flex';
     }
 
-    async _validateFile(task) {
-        if (task.type === 'script') {
-            await import(task.path);
-        } else { /* Add other file type validation later if needed */ }
-    }
-    
-    async _executeTask(task) {
-        if (task.type === 'script') {
-            return await import(task.path); // Use import() to get the module's exports
-        }
-        return Promise.reject(new Error(`Unknown task type '${task.type}'`));
-    }
-    
-    // --- UI and Logging Methods ---
-    log(message, level = 'info') {
-        if (!this.logContainer) return;
+    const consoleLevel = level === 'success' ? 'log' : level;
+    (console[consoleLevel] || console.log).call(console, `[LoadingManager] ${message}`);
+  }
 
-        const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 });
-        const p = document.createElement('p');
-        p.className = `log-${level}`;
-        p.innerHTML = `<span class="log-timestamp">[${timestamp}]</span> ${message}`;
-        
-        this.logContainer.appendChild(p);
-        this.logContainer.scrollTop = this.logContainer.scrollHeight;
+  fail(error, task) {
+    if (this.hasFailed) return;
+    this.hasFailed = true;
 
-        const consoleLevel = level === 'success' ? 'log' : level;
-        if (console[consoleLevel]) {
-            console[consoleLevel](`[LoadingManager] ${message}`);
-        } else {
-            console.log(`[LoadingManager] ${message}`);
-        }
+    const msg = error?.message || 'Unknown error';
+    this.log(`✖ FATAL during [${task?.name || 'unknown'}]: ${msg}`, 'error');
+    console.error('[LoadingManager] Failure context:', { task, error });
+
+    this.statusElement.textContent = 'Fatal Error';
+    this.percentEl.textContent = 'FAIL';
+
+    this.progressBar.classList.remove('complete');
+    this.progressBar.classList.add('error');
+    this.progressBar.style.width = '100%';
+
+    this.copyErrorsBtn.style.display = 'inline-flex';
+  }
+
+  _updateProgress(message, progress, opts = {}) {
+    if (this.hasFailed) return;
+    this.statusElement.textContent = message;
+    const pct = Math.max(0, Math.min(100, Math.floor(progress)));
+    this.percentEl.textContent = `${pct}%`;
+    this.progressBar.style.width = `${pct}%`;
+    this.progressBar.setAttribute('aria-valuenow', String(pct));
+    if (opts.complete || pct >= 100) {
+      this.progressBar.classList.remove('error');
+      this.progressBar.classList.add('complete'); // turns green
     }
+  }
 
-    fail(error, task) {
-        if (this.hasFailed) return;
-        this.hasFailed = true;
+  _copyErrorsToClipboard() {
+    const errs = [...this.logContainer.querySelectorAll('.log-error')].map(p => p.textContent.trim());
+    const text = errs.length ? errs.join('\n') : 'No errors logged.';
+    const doCopy = async () => {
+      try {
+        await navigator.clipboard.writeText(text);
+        this.log('Copied errors to clipboard.', 'success');
+      } catch {
+        // Fallback
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+        this.log('Copied errors to clipboard (fallback).', 'success');
+      }
+    };
+    doCopy();
+  }
 
-        const errorMessage = error?.message || 'An unknown error occurred.';
-        this.log(`✖ FATAL ERROR during [${task.name}]: ${errorMessage}`, 'error');
-        console.error(`[LoadingManager] Failed on task: ${task.name}`, { task, error });
+  _wireGlobalErrorCapture() {
+    window.addEventListener('error', (e) => {
+      const where = e?.filename ? ` @ ${e.filename}:${e.lineno}:${e.colno}` : '';
+      this.log(`Error: ${e?.message || 'Unknown'}${where}`, 'error');
+    });
 
-        this.statusElement.textContent = 'Fatal Error';
-        this.percentEl.textContent = 'FAIL';
+    window.addEventListener('unhandledrejection', (e) => {
+      const reason = e?.reason?.message || e?.reason || 'Unhandled promise rejection';
+      this.log(`UnhandledRejection: ${reason}`, 'error');
+    });
+  }
 
-        this.progressBar.classList.add('error');
-        this.progressBar.style.width = '100%';
-    }
+  _cacheDOMElements() {
+    this.loadingScreen  = document.getElementById('dustborne-loading-screen');
+    this.progressBar    = document.getElementById('dustborne-loading-bar');
+    this.statusElement  = document.getElementById('dustborne-loading-status');
+    this.logContainer   = document.getElementById('dustborne-log-container');
+    this.percentEl      = document.getElementById('dustborne-loading-percentage');
+    this.startButton    = document.getElementById('dustborne-start-button');
+    this.copyErrorsBtn  = document.getElementById('dustborne-copy-errors-btn');
+  }
 
-    _updateProgress(message, progress) {
-        if (this.hasFailed) return;
-        this.statusElement.textContent = message;
-        this.percentEl.textContent = `${Math.floor(progress)}%`;
-        this.progressBar.style.width = `${progress}%`;
-    }
+  _createDOM() {
+    const wrap = document.createElement('div');
+    wrap.id = 'dustborne-loading-screen';
+    wrap.innerHTML = `
+      <div class="db-modal">
+        <div class="db-modal-header">
+          <div class="db-title">Dustborne Loader</div>
+          <div class="db-actions">
+            <button id="dustborne-copy-errors-btn" class="db-btn db-btn-ghost" style="display:none" aria-label="Copy errors">Copy errors</button>
+          </div>
+        </div>
 
-    _cacheDOMElements() {
-        this.loadingScreen = document.getElementById('dustborne-loading-screen');
-        this.progressBar = document.getElementById('dustborne-loading-bar');
-        this.statusElement = document.getElementById('dustborne-loading-status');
-        this.logContainer = document.getElementById('dustborne-log-container');
-        this.percentEl = document.getElementById('dustborne-loading-percentage');
-        this.startButton = document.getElementById('dustborne-start-button');
-    }
-    
-    _createDOM() {
-        const container = document.createElement('div');
-        container.id = 'dustborne-loading-screen';
-        container.innerHTML = `
-          <div>
-            <h1 class="dustborne-logo">Dustborne</h1>
-            <div class="dustborne-loader-container">
-              <div id="dustborne-status-container">
-                <span id="dustborne-loading-status"></span>
-                <span id="dustborne-loading-percentage">0%</span>
-              </div>
-              <div id="dustborne-loading-bar-container"><div id="dustborne-loading-bar"></div></div>
-              <div id="dustborne-log-container"></div>
-              <button id="dustborne-start-button">Start Game</button>
-            </div>
-          </div>`;
-        document.body.appendChild(container);
-    }
-    
-    _createStyles() {
-        const styles = `
-            @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=Roboto+Mono:wght@400;700&display=swap');
-            #dustborne-loading-screen {
-                position: fixed; inset: 0;
-                background: #0a0a0a; color: #ddd;
-                display: flex; align-items: center; justify-content: center; flex-direction: column;
-                z-index: 10000;
-                font-family: 'Roboto Mono', monospace;
-                transition: opacity 1s ease-out, visibility 1s;
-                visibility: visible; opacity: 1;
-            }
-            #dustborne-loading-screen.fade-out { opacity: 0; visibility: hidden; pointer-events: none; }
-            #dustborne-loading-screen::before {
-                content: ''; position: absolute; inset: 0;
-                background-image: radial-gradient(circle at 15% 50%, rgba(200,150,100,0.1) 0%, transparent 40%), radial-gradient(circle at 85% 30%, rgba(200,150,100,0.08) 0%, transparent 30%);
-                animation: slowPulse 15s ease-in-out infinite;
-            }
-            @keyframes slowPulse { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.1);opacity:.8} }
-            .dustborne-logo {
-                font-family: 'Cinzel', serif; font-size: clamp(2.5em, 12vw, 6em); margin: 0 20px 40px; text-align: center; color: #fff; z-index: 3;
-                background: linear-gradient(180deg, #d3d3d3 0%, #888 25%, #444 50%, #888 75%, #d3d3d3 100%);
-                -webkit-background-clip: text; background-clip: text;
-                -webkit-text-fill-color: transparent; text-fill-color: transparent;
-                letter-spacing: 3px;
-                text-shadow: 1px 1px 0 #111, 2px 2px 0 #111, 3px 3px 1px #222, -1px -1px 2px rgba(255,255,255,.1);
-            }
-            .dustborne-loader-container {
-                width: 90%; max-width: 800px; z-index: 3; padding: 15px; background: rgba(20,20,20,0.5);
-                border-radius: 4px; border: 1px solid #282828; box-shadow: 0 0 30px rgba(0,0,0,0.5); text-align: center;
-            }
-            #dustborne-status-container {
-                display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: .9em; color: #a0a0a0;
-            }
-            #dustborne-loading-bar-container { width: 100%; height: 4px; background: #222; border-radius: 2px; overflow: hidden; }
-            #dustborne-loading-bar {
-                width: 0%; height: 100%; background: linear-gradient(90deg, #c0a080, #e0c0a0);
-                box-shadow: 0 0 8px #d0b090, 0 0 12px #d0b090; transition: width .4s ease-out, background-color .5s; border-radius: 2px;
-            }
-            #dustborne-loading-bar.error { background:#b04040; box-shadow:0 0 8px #f55,0 0 12px #f55; }
-            #dustborne-log-container {
-                margin-top: 15px; height: 150px; overflow-y: auto; background: rgba(0,0,0,0.4); border: 1px solid #282828; border-radius: 4px;
-                padding: 10px; text-align: left; font-size: .8em; color: #ccc; scrollbar-width: thin; scrollbar-color: #444 #222; line-height: 1.5;
-            }
-            #dustborne-log-container p { margin: 0; padding: 2px 0; white-space: pre-wrap; display: flex; }
-            .log-timestamp { color: #666; margin-right: 8px; flex-shrink: 0; }
-            .log-info { color: #87ceeb; } .log-success { color: #98fb98; } .log-warn { color: #ffd700; } .log-error { color: #ff6b6b; font-weight: bold; }
-            #dustborne-start-button {
-                display: none; /* Hidden by default */
-                margin-top: 20px; padding: 12px 30px; font-family: 'Cinzel', serif; font-size: 1.2em;
-                color: #e0e0e0; background: linear-gradient(180deg, #3a3a3a, #2a2a2a); border: 1px solid #555;
-                border-radius: 4px; cursor: pointer; text-transform: uppercase; letter-spacing: 1px;
-                transition: background 0.3s, box-shadow 0.3s, color 0.3s;
-            }
-            #dustborne-start-button:hover {
-                background: linear-gradient(180deg, #4a4a4a, #3a3a3a); color: #fff;
-                box-shadow: 0 0 10px rgba(200, 160, 120, 0.5);
-            }
-        `;
-        const style = document.createElement('style');
-        style.type = 'text/css';
-        style.innerText = styles;
-        document.head.appendChild(style);
-    }
+        <div class="db-modal-body">
+          <div id="dustborne-status-container" class="db-status">
+            <span id="dustborne-loading-status" aria-live="polite">Initializing…</span>
+            <span id="dustborne-loading-percentage" class="db-percent">0%</span>
+          </div>
+
+          <div id="dustborne-loading-bar-container" class="db-bar-outer" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <div id="dustborne-loading-bar" class="db-bar-fill"></div>
+          </div>
+
+          <div id="dustborne-log-container" class="db-log" aria-live="polite" aria-label="Debugger log"></div>
+        </div>
+
+        <div class="db-modal-footer">
+          <button id="dustborne-start-button" class="db-btn db-btn-primary" disabled aria-disabled="true">Start</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(wrap);
+
+    // Wire copy button after DOM is in
+    wrap.addEventListener('click', (e) => {
+      if (e.target && e.target.id === 'dustborne-copy-errors-btn') {
+        this._copyErrorsToClipboard();
+      }
+    });
+  }
+
+  _createStyles() {
+    const css = `
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
+      :root {
+        --db-bg: #0a0c10;
+        --db-glass: rgba(16,18,24,0.6);
+        --db-stroke: rgba(255,255,255,0.08);
+        --db-text: #e6e9ef;
+        --db-subtle: #a1a8b3;
+        --db-blue: #42a5ff;
+        --db-blue-glow: rgba(66,165,255,0.45);
+        --db-green: #25c46a;
+        --db-green-glow: rgba(37,196,106,0.45);
+        --db-red: #ff4d4d;
+        --db-red-glow: rgba(255,77,77,0.45);
+      }
+
+      #dustborne-loading-screen {
+        position: fixed; inset: 0; z-index: 10000;
+        display: grid; place-items: center;
+        background: radial-gradient(1200px 800px at 20% 10%, rgba(66,165,255,0.08), transparent 60%),
+                    radial-gradient(900px 600px at 80% 90%, rgba(37,196,106,0.08), transparent 55%),
+                    var(--db-bg);
+        color: var(--db-text);
+        font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        transition: opacity .9s ease, visibility .9s ease;
+        opacity: 1; visibility: visible;
+      }
+      #dustborne-loading-screen.fade-out { opacity: 0; visibility: hidden; pointer-events: none; }
+
+      .db-modal {
+        width: min(92vw, 760px);
+        border-radius: 16px;
+        background: var(--db-glass);
+        backdrop-filter: blur(18px) saturate(1.2);
+        -webkit-backdrop-filter: blur(18px) saturate(1.2);
+        border: 1px solid var(--db-stroke);
+        box-shadow: 0 20px 60px rgba(0,0,0,.45), 0 0 0 1px rgba(255,255,255,.02) inset;
+        overflow: clip;
+      }
+
+      .db-modal-header, .db-modal-footer {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 14px 16px;
+      }
+      .db-modal-header { border-bottom: 1px solid var(--db-stroke); }
+      .db-modal-footer { border-top: 1px solid var(--db-stroke); }
+
+      .db-title { font-weight: 700; letter-spacing: .2px; }
+      .db-actions { display: flex; gap: 8px; }
+
+      .db-modal-body { padding: 16px; }
+
+      .db-status {
+        display: flex; align-items: baseline; justify-content: space-between;
+        font-size: 14px; color: var(--db-subtle); margin-bottom: 10px;
+      }
+      .db-percent { font-variant-numeric: tabular-nums; color: var(--db-text); }
+
+      .db-bar-outer {
+        width: 100%; height: 12px; /* thicker */
+        background: rgba(255,255,255,0.06);
+        border: 1px solid var(--db-stroke);
+        border-radius: 999px;
+        padding: 2px;
+        overflow: hidden;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+      }
+      .db-bar-fill {
+        width: 0%; height: 100%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, var(--db-blue), #7bc4ff);
+        box-shadow: 0 0 14px var(--db-blue-glow);
+        transition: width .35s ease, background .35s ease, box-shadow .35s ease, transform .35s ease;
+        transform: translateZ(0);
+      }
+      .db-bar-fill.complete {
+        background: linear-gradient(90deg, var(--db-green), #7de3a7);
+        box-shadow: 0 0 14px var(--db-green-glow);
+      }
+      .db-bar-fill.error {
+        background: linear-gradient(90deg, var(--db-red), #ff8a8a);
+        box-shadow: 0 0 14px var(--db-red-glow);
+      }
+
+      .db-log {
+        margin-top: 14px; height: 160px; overflow: auto;
+        border: 1px solid var(--db-stroke);
+        background: rgba(0,0,0,0.25);
+        border-radius: 12px;
+        padding: 10px;
+        font-size: 12.5px;
+        line-height: 1.55;
+        scrollbar-width: thin;
+      }
+      .db-log p { margin: 0; padding: 2px 0; white-space: pre-wrap; display: flex; gap: 8px; }
+      .log-timestamp { color: #6f7682; flex-shrink: 0; }
+      .log-info { color: #9acbff; }
+      .log-success { color: #8ff2b3; }
+      .log-warn { color: #ffd46b; }
+      .log-error { color: #ff8484; font-weight: 600; }
+
+      .db-btn {
+        appearance: none; border: 0; cursor: pointer;
+        display: inline-flex; align-items: center; justify-content: center;
+        gap: 8px; padding: 10px 16px; border-radius: 12px;
+        font-weight: 600; letter-spacing: .2px; transition: transform .08s ease, box-shadow .2s ease, background .2s ease;
+        will-change: transform;
+      }
+      .db-btn:active { transform: translateY(1px); }
+
+      .db-btn-primary[disabled], .db-btn-primary[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
+      .db-btn-primary {
+        color: #0b1220;
+        background: linear-gradient(180deg, #8ec9ff, #5bb2ff);
+        box-shadow: 0 8px 24px rgba(66,165,255,0.32), inset 0 1px 0 rgba(255,255,255,0.5);
+        border: 1px solid rgba(255,255,255,0.4);
+      }
+      .db-btn-primary:hover { box-shadow: 0 8px 32px rgba(66,165,255,0.45), inset 0 1px 0 rgba(255,255,255,0.6); }
+
+      .db-btn-ghost {
+        color: var(--db-text);
+        background: rgba(255,255,255,0.06);
+        border: 1px solid var(--db-stroke);
+      }
+      .db-btn-ghost:hover { background: rgba(255,255,255,0.09); }
+
+      .btn-pressed { filter: brightness(.96); }
+    `;
+    const style = document.createElement('style');
+    style.type = 'text/css';
+    style.textContent = css;
+    document.head.appendChild(style);
+  }
 }
 
 const loadingManager = new LoadingManager();
