@@ -69,10 +69,8 @@ class LoadingManager {
     this.startButton.setAttribute('aria-disabled', 'false');
     this.startButton.style.display = 'inline-flex';
 
-    // Ensure single binding
     this.startButton.onclick = null;
     this.startButton.addEventListener('click', () => {
-      // Guard double clicks
       if (this.loadingScreen.classList.contains('fade-out')) return;
 
       this.startButton.classList.add('btn-pressed');
@@ -82,23 +80,13 @@ class LoadingManager {
         this.loadingScreen.remove();
         const testModule = this.loadedModules.get('./src/core/test.js');
         if (testModule && typeof testModule.show === 'function') {
-          try {
-            testModule.show();
-          } catch (err) {
-            console.error('Start screen handler threw:', err);
-          }
+          try { testModule.show(); } catch (err) { console.error('Start screen handler threw:', err); }
         } else {
           console.error("Could not find the 'show' function in ./src/core/test.js");
         }
       };
-
-      // Fallback in case transitionend isn’t fired on some iOS edge cases
       let fired = false;
-      this.loadingScreen.addEventListener('transitionend', () => {
-        if (fired) return;
-        fired = true;
-        run();
-      }, { once: true });
+      this.loadingScreen.addEventListener('transitionend', () => { if (fired) return; fired = true; run(); }, { once: true });
       setTimeout(() => { if (!fired) run(); }, 1200);
     }, { once: true });
   }
@@ -161,7 +149,7 @@ class LoadingManager {
     this.progressBar.setAttribute('aria-valuenow', String(pct));
     if (opts.complete || pct >= 100) {
       this.progressBar.classList.remove('error');
-      this.progressBar.classList.add('complete'); // turns green
+      this.progressBar.classList.add('complete'); // green
     }
   }
 
@@ -173,7 +161,6 @@ class LoadingManager {
         await navigator.clipboard.writeText(text);
         this.log('Copied errors to clipboard.', 'success');
       } catch {
-        // Fallback
         const ta = document.createElement('textarea');
         ta.value = text;
         document.body.appendChild(ta);
@@ -191,7 +178,6 @@ class LoadingManager {
       const where = e?.filename ? ` @ ${e.filename}:${e.lineno}:${e.colno}` : '';
       this.log(`Error: ${e?.message || 'Unknown'}${where}`, 'error');
     });
-
     window.addEventListener('unhandledrejection', (e) => {
       const reason = e?.reason?.message || e?.reason || 'Unhandled promise rejection';
       this.log(`UnhandledRejection: ${reason}`, 'error');
@@ -212,14 +198,9 @@ class LoadingManager {
     const wrap = document.createElement('div');
     wrap.id = 'dustborne-loading-screen';
     wrap.innerHTML = `
-      <div class="db-modal">
-        <div class="db-modal-header">
-          <div class="db-title">Dustborne Loader</div>
-          <div class="db-actions">
-            <button id="dustborne-copy-errors-btn" class="db-btn db-btn-ghost" style="display:none" aria-label="Copy errors">Copy errors</button>
-          </div>
-        </div>
+      <h1 class="db-brand" aria-label="Dustborne">Dustborne</h1>
 
+      <div class="db-modal">
         <div class="db-modal-body">
           <div id="dustborne-status-container" class="db-status">
             <span id="dustborne-loading-status" aria-live="polite">Initializing…</span>
@@ -234,23 +215,28 @@ class LoadingManager {
         </div>
 
         <div class="db-modal-footer">
+          <button id="dustborne-copy-errors-btn" class="db-btn db-btn-ghost" style="display:none" aria-label="Copy errors">Copy errors</button>
           <button id="dustborne-start-button" class="db-btn db-btn-primary" disabled aria-disabled="true">Start</button>
         </div>
       </div>
     `;
     document.body.appendChild(wrap);
 
-    // Wire copy button after DOM is in
     wrap.addEventListener('click', (e) => {
-      if (e.target && e.target.id === 'dustborne-copy-errors-btn') {
-        this._copyErrorsToClipboard();
-      }
+      if (e.target && e.target.id === 'dustborne-copy-errors-btn') this._copyErrorsToClipboard();
     });
   }
 
   _createStyles() {
     const css = `
       @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
+      /* If you self-host Druk Wide, declare it here (local lookup as fallback) */
+      @font-face {
+        font-family: 'Druk Wide';
+        src: local('Druk Wide'), local('Druk Wide Trial'), local('DrukWide');
+        font-weight: 700; font-style: normal; font-display: swap;
+      }
 
       :root {
         --db-bg: #0a0c10;
@@ -268,7 +254,7 @@ class LoadingManager {
 
       #dustborne-loading-screen {
         position: fixed; inset: 0; z-index: 10000;
-        display: grid; place-items: center;
+        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
         background: radial-gradient(1200px 800px at 20% 10%, rgba(66,165,255,0.08), transparent 60%),
                     radial-gradient(900px 600px at 80% 90%, rgba(37,196,106,0.08), transparent 55%),
                     var(--db-bg);
@@ -276,8 +262,23 @@ class LoadingManager {
         font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
         transition: opacity .9s ease, visibility .9s ease;
         opacity: 1; visibility: visible;
+        padding: 24px 12px;
       }
       #dustborne-loading-screen.fade-out { opacity: 0; visibility: hidden; pointer-events: none; }
+
+      .db-brand {
+        font-family: 'Druk Wide', Impact, 'Arial Black', system-ui, sans-serif;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        margin: 0 0 6px 0;
+        font-size: clamp(28px, 8vw, 72px);
+        line-height: 1;
+        background: linear-gradient(180deg, #f0f0f0 0%, #a8a8a8 25%, #6a6a6a 50%, #a8a8a8 75%, #f0f0f0 100%);
+        -webkit-background-clip: text; background-clip: text;
+        -webkit-text-fill-color: transparent;
+        text-shadow: 0 2px 0 rgba(0,0,0,0.35), 0 12px 28px rgba(0,0,0,0.35);
+      }
 
       .db-modal {
         width: min(92vw, 760px);
@@ -290,17 +291,11 @@ class LoadingManager {
         overflow: clip;
       }
 
-      .db-modal-header, .db-modal-footer {
-        display: flex; align-items: center; justify-content: space-between;
-        padding: 14px 16px;
-      }
-      .db-modal-header { border-bottom: 1px solid var(--db-stroke); }
-      .db-modal-footer { border-top: 1px solid var(--db-stroke); }
-
-      .db-title { font-weight: 700; letter-spacing: .2px; }
-      .db-actions { display: flex; gap: 8px; }
-
       .db-modal-body { padding: 16px; }
+      .db-modal-footer {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 14px 16px; border-top: 1px solid var(--db-stroke);
+      }
 
       .db-status {
         display: flex; align-items: baseline; justify-content: space-between;
