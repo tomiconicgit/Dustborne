@@ -5,7 +5,6 @@ export default class Loader {
         this._createStyles();
         this._createDOM();
 
-        // Get references to the newly created elements
         this.loadingScreen = document.getElementById('dustborne-loading-screen');
         this.progressBar = document.getElementById('dustborne-loading-bar');
         this.statusElement = document.getElementById('dustborne-loading-status');
@@ -34,7 +33,7 @@ export default class Loader {
                 align-items: center;
                 justify-content: center;
                 flex-direction: column;
-                z-index: 10000;
+                z-index: 999; /* Changed: Lowered z-index to be below debugger */
                 font-family: 'Roboto Mono', monospace;
                 transition: opacity 1s ease-out, visibility 1s;
                 transition-delay: 0.5s;
