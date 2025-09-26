@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-let _template = null; // cached GLTF scene
+let _template = null;
 
 async function loadTemplate(url = './src/world/assets/rocks/copperore.glb') {
   if (_template) return _template;
@@ -24,7 +24,7 @@ async function loadTemplate(url = './src/world/assets/rocks/copperore.glb') {
       }
     }
   });
-  
+
   const bbox = new THREE.Box3().setFromObject(root);
   const template = new THREE.Group();
   template.add(root);
@@ -33,28 +33,21 @@ async function loadTemplate(url = './src/world/assets/rocks/copperore.glb') {
   return _template;
 }
 
-/**
- * ✨ NEW: Spawns a single copper ore rock at a specific location.
- */
-export async function spawnSingleRock(
-  scene,
-  { center = new THREE.Vector3(0, 0, 0) } = {}
-) {
+export async function spawnSingleRock(scene, { center = new THREE.Vector3(), tile = null } = {}) {
   const template = await loadTemplate();
   const clone = template.clone(true);
 
-  clone.traverse((o) => {
-    if (o.isMesh) {
-      o.material = o.material.clone();
-    }
-  });
+  clone.traverse((o) => { if (o.isMesh) o.material = o.material.clone(); });
 
   const minY = template.userData.__bboxMinY ?? 0;
   clone.position.set(center.x, -minY - 0.05, center.z);
   clone.rotation.y = Math.random() * Math.PI * 2;
   const s = THREE.MathUtils.lerp(1.0, 1.3, Math.random());
   clone.scale.setScalar(s);
-  
+
+  clone.userData.isMineable = true;
+  if (tile) clone.userData.tile = tile;
+
   scene.add(clone);
   return clone;
 }
