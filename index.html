@@ -19,16 +19,6 @@
         }
     </script>
 
-    <script type="module">
-      // Initialize systems immediately. Order is important.
-      import Debugger from './src/ui/Debugger.js';
-      window.debugger = new Debugger();
-
-      import Loader from './src/ui/Loader.js';
-      window.loader = new Loader();
-      
-      // Start the main game logic
-      import './main.js';
-    </script>
+    <script type="module" src="./main.js"></script>
 </body>
 </html>
