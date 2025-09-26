@@ -5,40 +5,19 @@ import Camera, { CameraController } from '../../core/camera.js';
 import Lighting from '../../core/lighting.js';
 import Character from '../../core/logic/character.js';
 import CharacterMovement from '../../core/logic/charactermovement.js';
+import WorldEngine from '../../core/worldengine.js';
 
+// Keep class for future chunk-specific logic (unused in tiler for now)
 export default class MiningArea {
   constructor() {
     this.mesh = new THREE.Group();
-
-    // Ground (mark as landscape for controller tests)
-    const baseColor = new THREE.Color('#8B4513'); // saddle brown
-    const outerGeo = new THREE.PlaneGeometry(50, 50);
-    const outerMat = new THREE.MeshStandardMaterial({ color: baseColor, roughness: 1, metalness: 0 });
-    const outerMesh = new THREE.Mesh(outerGeo, outerMat);
-    outerMesh.rotation.x = -Math.PI / 2;
-    outerMesh.receiveShadow = true;
-    this.mesh.add(outerMesh);
-
-    const innerGeo = new THREE.PlaneGeometry(25, 25);
-    const innerColor = baseColor.clone().multiplyScalar(0.75);
-    const innerMat = new THREE.MeshStandardMaterial({ color: innerColor, roughness: 1, metalness: 0 });
-    const innerMesh = new THREE.Mesh(innerGeo, innerMat);
-    innerMesh.rotation.x = -Math.PI / 2;
-    innerMesh.position.y = 0.01;
-    innerMesh.receiveShadow = true;
-    this.mesh.add(innerMesh);
   }
-
-  update(time) { /* reserved */ }
+  update() {}
 }
 
 export async function show({ rootId = 'game-root' } = {}) {
   let root = document.getElementById(rootId);
-  if (!root) {
-    root = document.createElement('div');
-    root.id = rootId;
-    document.body.appendChild(root);
-  }
+  if (!root) { root = document.createElement('div'); root.id = rootId; document.body.appendChild(root); }
 
   // Viewport
   const viewport = new Viewport({ root });
@@ -46,41 +25,57 @@ export async function show({ rootId = 'game-root' } = {}) {
   viewport.renderer.shadowMap.enabled = true;
   viewport.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-  // Scene
+  // Scene + lighting
   const scene = new THREE.Scene();
-
-  // Area content
-  const area = new MiningArea();
-  scene.add(area.mesh);
-
-  // Lighting
   const lighting = new Lighting(scene);
 
-  // Camera + orbit controller (NO temporary target object)
+  // Camera + orbit
   const camera = new Camera();
   viewport.setScene(scene);
   viewport.setCamera(camera.threeCamera);
   viewport.start();
   const orbitController = new CameraController(viewport.domElement, camera);
 
+  // World tiler: stitch Mining (0,0) + Desert (1,0)
+  const world = new WorldEngine(scene, {
+    CHUNK_SIZE: 50,
+    TILE_SIZE: 10,
+    ACTIVE_HALF: 50,
+    PRELOAD_RING_TILES: 5
+  });
+  world.registerChunk('mining', 0, 0);
+  world.registerChunk('desert', 1, 0); // east of mining
+  world.buildTiles();
+
   // Character
   const character = new Character(scene);
   await character.init(new THREE.Vector3(0, 0, 2));
-
-  // Now use the character as the camera target
   camera.setTarget(character.object);
   camera.handleResize();
 
-  // Tap-to-move / interaction controller
-  const movement = new CharacterMovement(viewport.domElement, { scene }, camera, character, area);
+  // Movement (raycast against world group via landscape proxy)
+  const movement = new CharacterMovement(
+    viewport.domElement,
+    { scene },
+    camera,
+    character,
+    world.getLandscapeProxy()
+  );
+
+  // Per-frame: update tile visibility based on player
+  const step = () => {
+    if (character.object) world.update(character.object.position);
+    requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
 
   // Resize
   window.addEventListener('resize', () => camera.handleResize(), { passive: true });
 
-  // Expose for debugging
+  // Debug
   window.Dustborne = Object.assign(window.Dustborne || {}, {
-    viewport, scene, area, lighting, camera, orbitController, character, movement
+    viewport, scene, lighting, camera, orbitController, world, character, movement
   });
 
-  console.log('MiningArea.show(): character loaded; camera targeting character.');
+  console.log('WorldEngine running: Mining(0,0) + Desert(1,0). 100x100 active + 5-tile preload ring.');
 }
