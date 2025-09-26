@@ -261,7 +261,7 @@ class LoadingManager {
         display: flex;
         flex-direction: column;
         align-items: center;
-        justify-content: center; /* This is the new robust centering */
+        justify-content: center;
         background: radial-gradient(1200px 800px at 20% 10%, rgba(210, 180, 140, 0.12), transparent 60%),
                     radial-gradient(900px 600px at 80% 90%, rgba(139, 69, 19, 0.1), transparent 55%),
                     var(--db-bg);
@@ -270,7 +270,6 @@ class LoadingManager {
         opacity: 1; visibility: visible; transition: opacity .9s ease, visibility .9s ease;
         padding: 24px 12px;
         box-sizing: border-box;
-        position: relative;
         overflow: hidden;
       }
       #dustborne-loading-screen.fade-out { opacity: 0; visibility: hidden; pointer-events: none; }
@@ -312,10 +311,10 @@ class LoadingManager {
       }
 
       .db-brand {
-        font-family: 'Bebas Neue', sans-serif; /* New font */
-        font-weight: 400; /* Bebas Neue is not a variable font, 400 is standard */
+        font-family: 'Bebas Neue', sans-serif;
+        font-weight: 400;
         text-transform: uppercase;
-        letter-spacing: 5px; /* Adjusted for new font */
+        letter-spacing: 5px;
         margin: 0;
         font-size: clamp(48px, 12vw, 90px);
         line-height: 1;
