@@ -12,7 +12,7 @@ export default class Engine {
       { name: 'Sky',                   type: 'script', path: './src/world/assets/sky/sky.js' },
       { name: 'Mining Area Chunk',     type: 'script', path: './src/world/chunks/miningarea.js' },
       { name: 'Desert Chunk',          type: 'script', path: './src/world/chunks/desert.js' },
-      { name: 'Copper Ore',            type: 'script', path: './src/assets/rocks/copperore.js' } // ← added
+      { name: 'Copper Ore',            type: 'script', path: './src/world/assets/rocks/copperore.js' } // ← added
     ];
   }
 
@@ -27,7 +27,7 @@ export default class Engine {
       { name: 'Sky',                   type: 'script', path: './src/world/assets/sky/sky.js' },
       { name: 'Mining Area Chunk',     type: 'script', path: './src/world/chunks/miningarea.js' },
       { name: 'Desert Chunk',          type: 'script', path: './src/world/chunks/desert.js' },
-      { name: 'Copper Ore',            type: 'script', path: './src/assets/rocks/copperore.js' } // ← added
+      { name: 'Copper Ore',            type: 'script', path: './src/world/assets/rocks/copperore.js' } // ← added
     ];
   }
 
