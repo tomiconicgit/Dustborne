@@ -262,22 +262,25 @@ class LoadingManager {
         flex-direction: column;
         align-items: center;
         justify-content: center;
+        /* Updated background for subtle fading to black and warm tone */
         background: radial-gradient(1200px 800px at 20% 10%, rgba(210, 180, 140, 0.12), transparent 60%),
                     radial-gradient(900px 600px at 80% 90%, rgba(139, 69, 19, 0.1), transparent 55%),
-                    var(--db-bg);
+                    var(--db-bg); /* Base dark background color */
         color: var(--db-text);
         font-family: 'Inter', system-ui, sans-serif;
         opacity: 1; visibility: visible; transition: opacity .9s ease, visibility .9s ease;
         padding: 24px 12px;
         box-sizing: border-box;
-        overflow: hidden;
+        overflow: hidden; /* Ensure particles don't show outside the screen */
+        position: relative; /* Needed for pseudo-elements to position correctly */
       }
       #dustborne-loading-screen.fade-out { opacity: 0; visibility: hidden; pointer-events: none; }
       
       /* --- DUST PARTICLE EFFECT --- */
       #dustborne-loading-screen::before, #dustborne-loading-screen::after {
         content: '';
-        position: absolute; inset: -200px;
+        position: absolute;
+        inset: -200px; /* Cover a larger area to allow floating in/out */
         pointer-events: none;
       }
       #dustborne-loading-screen::before {
@@ -287,7 +290,7 @@ class LoadingManager {
           radial-gradient(3px 3px at 85% 60%, rgba(245, 238, 218, 0.1), transparent),
           radial-gradient(2px 2px at 30% 90%, rgba(245, 238, 218, 0.15), transparent);
         animation: float-slow 50s linear infinite;
-        z-index: 1;
+        z-index: 1; /* Below the main content */
       }
       #dustborne-loading-screen::after {
         background-image:
@@ -296,7 +299,7 @@ class LoadingManager {
           radial-gradient(2px 2px at 40% 70%, rgba(245, 238, 218, 0.25), transparent),
           radial-gradient(1px 1px at 90% 85%, rgba(245, 238, 218, 0.3), transparent);
         animation: float-fast 35s linear infinite;
-        z-index: 2;
+        z-index: 2; /* Slightly above ::before, but still behind content */
       }
 
       /* --- UI ELEMENTS --- */
@@ -306,7 +309,7 @@ class LoadingManager {
         align-items: center;
         gap: 20px; /* Increased gap for better spacing */
         position: relative; 
-        z-index: 10;
+        z-index: 10; /* Ensure UI is above dust particles */
         width: 100%;
       }
 
