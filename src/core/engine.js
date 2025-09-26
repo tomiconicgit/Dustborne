@@ -9,9 +9,10 @@ export default class Engine {
       { name: 'World Engine',          type: 'script', path: './src/core/worldengine.js' },
       { name: 'Character',             type: 'script', path: './src/core/logic/character.js' },
       { name: 'Character Movement',    type: 'script', path: './src/core/logic/charactermovement.js' },
-      { name: 'Sky',                   type: 'script', path: './src/world/assets/sky/sky.js' },   // ← added
+      { name: 'Sky',                   type: 'script', path: './src/world/assets/sky/sky.js' },
       { name: 'Mining Area Chunk',     type: 'script', path: './src/world/chunks/miningarea.js' },
-      { name: 'Desert Chunk',          type: 'script', path: './src/world/chunks/desert.js' }
+      { name: 'Desert Chunk',          type: 'script', path: './src/world/chunks/desert.js' },
+      { name: 'Copper Ore',            type: 'script', path: './src/assets/rocks/copperore.js' } // ← added
     ];
   }
 
@@ -23,9 +24,10 @@ export default class Engine {
       { name: 'World Engine',          type: 'script', path: './src/core/worldengine.js' },
       { name: 'Character',             type: 'script', path: './src/core/logic/character.js' },
       { name: 'Character Movement',    type: 'script', path: './src/core/logic/charactermovement.js' },
-      { name: 'Sky',                   type: 'script', path: './src/world/assets/sky/sky.js' },   // ← added
+      { name: 'Sky',                   type: 'script', path: './src/world/assets/sky/sky.js' },
       { name: 'Mining Area Chunk',     type: 'script', path: './src/world/chunks/miningarea.js' },
-      { name: 'Desert Chunk',          type: 'script', path: './src/world/chunks/desert.js' }
+      { name: 'Desert Chunk',          type: 'script', path: './src/world/chunks/desert.js' },
+      { name: 'Copper Ore',            type: 'script', path: './src/assets/rocks/copperore.js' } // ← added
     ];
   }
 
