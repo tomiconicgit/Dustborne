@@ -2,24 +2,28 @@
 
 export default class Engine {
     /**
-     * This is the manifest. The loader will ask for this list.
-     * We are only asking it to load our test script.
+     * PHASE 1: Provides a complete manifest of all critical game scripts.
+     * The loader will use this list to validate every file.
      */
-    getManifest() {
+    getFullManifest() {
+        console.log("ENGINE: Providing full manifest for validation.");
         return [
+            // Add every single script file for your game here as you create them.
+            { name: 'Engine Core', type: 'script', path: './src/core/engine.js' },
             { name: 'Test Screen', type: 'script', path: './src/core/test.js' }
+            // { name: 'Player Logic', type: 'script', path: './src/game/player.js' },
+            // { name: 'UI Manager',   type: 'script', path: './src/ui/uimanager.js' },
         ];
     }
 
     /**
-     * These methods will be used later when the actual game is running.
-     * For now, they can be empty.
+     * PHASE 2: Provides the specific assets needed right now.
+     * The loader will call this after validation to load only what's required to start.
      */
-    async init() { 
-        // Not used in this test
-    }
-
-    start() {
-        // Not used in this test
+    getInitialAssets() {
+        console.log("ENGINE: Providing initial assets for targeted load.");
+        return [
+            { name: 'Test Screen', type: 'script', path: './src/core/test.js' }
+        ];
     }
 }
