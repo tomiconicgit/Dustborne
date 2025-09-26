@@ -7,10 +7,9 @@ import Character from '../../core/logic/character.js';
 import CharacterMovement from '../../core/logic/charactermovement.js';
 import WorldEngine from '../../core/worldengine.js';
 
-// Keep class for future chunk-specific logic (unused in tiler for now)
 export default class MiningArea {
   constructor() {
-    this.mesh = new THREE.Group();
+    this.mesh = new THREE.Group(); // reserved for future chunk-specific props
   }
   update() {}
 }
@@ -36,15 +35,27 @@ export async function show({ rootId = 'game-root' } = {}) {
   viewport.start();
   const orbitController = new CameraController(viewport.domElement, camera);
 
-  // World tiler: stitch Mining (0,0) + Desert (1,0)
+  // World tiler: Mining at center + Desert ring around it (8 neighbors)
   const world = new WorldEngine(scene, {
     CHUNK_SIZE: 50,
     TILE_SIZE: 10,
     ACTIVE_HALF: 50,
     PRELOAD_RING_TILES: 5
   });
+
+  // Center
   world.registerChunk('mining', 0, 0);
-  world.registerChunk('desert', 1, 0); // east of mining
+
+  // Desert ring (surrounding the mining chunk)
+  world.registerChunk('desert',  1,  0); // E
+  world.registerChunk('desert', -1,  0); // W
+  world.registerChunk('desert',  0,  1); // N
+  world.registerChunk('desert',  0, -1); // S
+  world.registerChunk('desert',  1,  1); // NE
+  world.registerChunk('desert',  1, -1); // SE
+  world.registerChunk('desert', -1,  1); // NW
+  world.registerChunk('desert', -1, -1); // SW
+
   world.buildTiles();
 
   // Character
@@ -53,7 +64,7 @@ export async function show({ rootId = 'game-root' } = {}) {
   camera.setTarget(character.object);
   camera.handleResize();
 
-  // Movement (raycast against world group via landscape proxy)
+  // Tap-to-move
   const movement = new CharacterMovement(
     viewport.domElement,
     { scene },
@@ -62,7 +73,7 @@ export async function show({ rootId = 'game-root' } = {}) {
     world.getLandscapeProxy()
   );
 
-  // Per-frame: update tile visibility based on player
+  // Tile state updates around the player
   const step = () => {
     if (character.object) world.update(character.object.position);
     requestAnimationFrame(step);
@@ -77,5 +88,5 @@ export async function show({ rootId = 'game-root' } = {}) {
     viewport, scene, lighting, camera, orbitController, world, character, movement
   });
 
-  console.log('WorldEngine running: Mining(0,0) + Desert(1,0). 100x100 active + 5-tile preload ring.');
+  console.log('WorldEngine: mining at (0,0) with desert ring. Mining floor matches desert color.');
 }
