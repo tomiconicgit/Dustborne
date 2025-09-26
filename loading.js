@@ -12,6 +12,9 @@ class LoadingManager {
 
     async start(EngineClass) {
         const engineInstance = new EngineClass();
+        
+        // Helper function to introduce a small delay for visual feedback
+        const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
         // --- PHASE 1: VALIDATION SCAN ---
         this.log('Starting Phase 1: Validating all game files...');
@@ -23,6 +26,9 @@ class LoadingManager {
                 const task = fullManifest[i];
                 const progress = ((i + 1) / fullManifest.length) * 100;
                 this._updateProgress(`Validating: ${task.name}`, progress);
+                
+                await delay(150); // Artificial delay to make progress visible
+
                 try {
                     await this._validateFile(task);
                 } catch (error) {
@@ -44,9 +50,12 @@ class LoadingManager {
                 const task = initialAssets[i];
                 const progress = ((i + 1) / initialAssets.length) * 100;
                 this._updateProgress(`Loading: ${task.name}`, progress);
+
+                await delay(250); // Artificial delay to make progress visible
+
                 try {
                     const loadedModule = await this._executeTask(task);
-                    this.loadedModules.set(task.path, loadedModule); // Store the loaded module
+                    this.loadedModules.set(task.path, loadedModule);
                 } catch (error) {
                     return this.fail(error, task);
                 }
@@ -137,7 +146,7 @@ class LoadingManager {
         this.statusElement = document.getElementById('dustborne-loading-status');
         this.logContainer = document.getElementById('dustborne-log-container');
         this.percentEl = document.getElementById('dustborne-loading-percentage');
-        this.startButton = document.getElementById('dustborne-start-button'); // Cache the button
+        this.startButton = document.getElementById('dustborne-start-button');
     }
     
     _createDOM() {
