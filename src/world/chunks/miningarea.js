@@ -1,31 +1,37 @@
 // file: src/world/chunks/miningarea.js
 import * as THREE from 'three';
-// The import path below is now corrected
-import { spawnCluster as spawnCopperCluster } from '../assets/rocks/copperore.js';
+import { spawnSingleRock } from '../assets/rocks/copperore.js';
 
-// Landscape descriptor only
-export default class MiningArea {
-  constructor() {
-    this.mesh = null; // reserved
-  }
-  update() {}
-}
+export default class MiningArea { /* ... unchanged ... */ }
 
 /**
- * The mining chunk registers its world content here.
- * WorldEngine will call spawners for each registered chunk.
+ * Registers rock spawners for the 'mining' chunk.
+ * This now places rocks in fixed tile locations and marks those tiles as unwalkable.
  */
 export function register(world) {
-  // For every 'mining' chunk, place a 6-rock copper cluster inside a 20x20 zone near the chunk center.
-  world.registerKindSpawner('mining', async ({ scene, center /* Vector3 */, cx, cz }) => {
-    // center is the chunk center in world space, y=0
-    // Slight offset so cluster isn't perfectly centered; still inside chunk (50x50)
-    const offset = new THREE.Vector3(
-      THREE.MathUtils.randFloatSpread(6), // ±3m
-      0,
-      THREE.MathUtils.randFloatSpread(6)
-    );
-    const clusterCenter = new THREE.Vector3().addVectors(center, offset);
-    return spawnCopperCluster(scene, { center: clusterCenter, count: 6, area: 20 });
+  // Define a fixed pattern of rock locations relative to the chunk's center tile.
+  // [gridX, gridZ] offsets.
+  const rockPattern = [
+    [-2, -1], [-1, 1], [0, -2], [1, 2], [2, 0]
+  ];
+
+  world.registerKindSpawner('mining', async ({ scene, center, cx, cz, world }) => {
+    const chunkGridX = cx * world.TILES_PER_CHUNK;
+    const chunkGridZ = cz * world.TILES_PER_CHUNK;
+
+    for (const [dx, dz] of rockPattern) {
+      const gridX = chunkGridX + dx;
+      const gridZ = chunkGridZ + dz;
+      
+      const key = `${gridX},${gridZ}`;
+      const tile = world._tileMap.get(key);
+
+      if (tile) {
+        // Mark the tile as an obstacle
+        tile.isWalkable = false;
+        // Spawn a single rock at the tile's center
+        await spawnSingleRock(scene, { center: tile.center });
+      }
+    }
   });
 }
