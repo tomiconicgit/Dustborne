@@ -1,0 +1,9 @@
+{
+  "files": [
+    { "path": "./src/core/engine.js", "type": "script" },
+    { "path": "./src/core/inputmanager.js", "type": "script" },
+    { "path": "./src/game/player.js", "type": "script" },
+    { "path": "./src/ui/uimanager.js", "type": "script" },
+    { "path": "./src/config/settings.json", "type": "json" }
+  ]
+}
