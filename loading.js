@@ -196,7 +196,6 @@ class LoadingManager {
   _createDOM() {
     const wrap = document.createElement('div');
     wrap.id = 'dustborne-loading-screen';
-    // Reverted to the simpler, correct DOM structure
     wrap.innerHTML = `
       <div class="db-center">
         <h1 class="db-brand" aria-label="Dustborne">Dustborne</h1>
@@ -225,12 +224,10 @@ class LoadingManager {
 
   _createStyles() {
     const css = `
-      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-      @font-face { font-family: 'Druk Wide';
-        src: local('Druk Wide'), local('Druk Wide Trial'), local('DrukWide');
-        font-weight: 700; font-style: normal; font-display: swap;
-      }
+      /* --- FONT IMPORT --- */
+      @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600;700&display=swap');
 
+      /* --- ANIMATIONS --- */
       @keyframes float-slow {
         0% { transform: translate(0, 0); }
         50% { transform: translate(20px, -25px); opacity: 1; }
@@ -242,6 +239,7 @@ class LoadingManager {
         100% { transform: translate(0, 0); }
       }
 
+      /* --- COLOR & THEME VARIABLES --- */
       :root {
         --db-bg: #1a1612;
         --db-text: #f5eeda;
@@ -257,25 +255,30 @@ class LoadingManager {
 
       .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
 
+      /* --- MAIN SCREEN LAYOUT --- */
       #dustborne-loading-screen {
         position: fixed; inset: 0; z-index: 10000;
-        display: flex; flex-direction: column; align-items: center;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center; /* This is the new robust centering */
         background: radial-gradient(1200px 800px at 20% 10%, rgba(210, 180, 140, 0.12), transparent 60%),
                     radial-gradient(900px 600px at 80% 90%, rgba(139, 69, 19, 0.1), transparent 55%),
                     var(--db-bg);
         color: var(--db-text);
-        font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        font-family: 'Inter', system-ui, sans-serif;
         opacity: 1; visibility: visible; transition: opacity .9s ease, visibility .9s ease;
         padding: 24px 12px;
+        box-sizing: border-box;
         position: relative;
         overflow: hidden;
       }
       #dustborne-loading-screen.fade-out { opacity: 0; visibility: hidden; pointer-events: none; }
       
+      /* --- DUST PARTICLE EFFECT --- */
       #dustborne-loading-screen::before, #dustborne-loading-screen::after {
         content: '';
-        position: absolute;
-        inset: -200px;
+        position: absolute; inset: -200px;
         pointer-events: none;
       }
       #dustborne-loading-screen::before {
@@ -297,21 +300,28 @@ class LoadingManager {
         z-index: 2;
       }
 
+      /* --- UI ELEMENTS --- */
+      .db-center {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 20px; /* Increased gap for better spacing */
+        position: relative; 
+        z-index: 10;
+        width: 100%;
+      }
+
       .db-brand {
-        font-family: 'Druk Wide', Impact, 'Arial Black', system-ui, sans-serif;
-        font-weight: 700; text-transform: uppercase; letter-spacing: 2px;
-        margin: 12px 0 20px;
-        font-size: clamp(28px, 8vw, 72px); line-height: 1;
+        font-family: 'Bebas Neue', sans-serif; /* New font */
+        font-weight: 400; /* Bebas Neue is not a variable font, 400 is standard */
+        text-transform: uppercase;
+        letter-spacing: 5px; /* Adjusted for new font */
+        margin: 0;
+        font-size: clamp(48px, 12vw, 90px);
+        line-height: 1;
         background: linear-gradient(180deg, #fdf5e6 0%, #e8d7ab 50%, #d4b97a 100%);
         -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
         text-shadow: 0 2px 0 rgba(0,0,0,0.35), 0 12px 28px rgba(0,0,0,0.35);
-      }
-
-      .db-center {
-        flex: 1; width: 100%;
-        display: flex; flex-direction: column; align-items: center; justify-content: center;
-        gap: 14px;
-        position: relative; z-index: 10; /* Ensures this content is above the dust */
       }
 
       .db-bar-outer {
@@ -359,10 +369,10 @@ class LoadingManager {
       }
 
       .db-btn-primary[disabled], .db-btn-primary[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
-      
       .db-btn-primary {
         color: var(--db-text); background: #4a3f32;
-        font-size: 14px; text-transform: uppercase; letter-spacing: 1px;
+        font-family: 'Inter', sans-serif; font-size: 14px;
+        text-transform: uppercase; letter-spacing: 1px;
         padding: 14px 28px; border: 1px solid #7c6841;
         box-shadow: inset 0 0 0 1px rgba(245, 238, 218, 0.1), 0 4px 12px rgba(0,0,0,0.5);
         text-shadow: 0 1px 2px rgba(0,0,0,0.4);
@@ -380,6 +390,7 @@ class LoadingManager {
       }
       .db-btn-ghost:hover { background: rgba(255,255,255,0.09); }
 
+      /* --- DEBUG CARD --- */
       .db-debug-card {
         position: fixed; left: 50%; transform: translateX(-50%); bottom: 16px;
         width: min(92vw, 760px); background: rgba(26, 22, 18, 0.7);
@@ -387,7 +398,7 @@ class LoadingManager {
         border: 1px solid var(--db-stroke); border-radius: 14px;
         box-shadow: 0 14px 40px rgba(0,0,0,.45);
         overflow: hidden;
-        z-index: 10; /* Ensures this content is above the dust */
+        z-index: 10;
       }
       .db-log {
         max-height: 28vh; min-height: 120px;
