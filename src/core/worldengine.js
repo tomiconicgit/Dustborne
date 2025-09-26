@@ -1,5 +1,10 @@
 // file: src/core/worldengine.js
 import * as THREE from 'three';
+import Viewport from './viewport.js';
+import Camera, { CameraController } from './camera.js';
+import Lighting from './lighting.js';
+import Character from './logic/character.js';
+import CharacterMovement from './logic/charactermovement.js';
 import Desert from '../world/chunks/desert.js';
 
 export default class WorldEngine {
@@ -7,28 +12,30 @@ export default class WorldEngine {
     CHUNK_SIZE = 50,
     TILE_SIZE = 10,
     ACTIVE_HALF = 50,          // 100x100 active area around player
-    PRELOAD_RING_TILES = 5     // 5-tile ring beyond active area
+    PRELOAD_RING_TILES = 5     // 5-tile ring beyond active
   } = {}) {
     this.scene = scene;
+
+    // Terrain group
     this.group = new THREE.Group();
     this.group.name = 'LandscapeTiles';
     this.scene.add(this.group);
 
-    // geometry/tiling
+    // Tiling
     this.CHUNK_SIZE = CHUNK_SIZE;
     this.TILE_SIZE = TILE_SIZE;
     this.TILES_PER_CHUNK = Math.floor(CHUNK_SIZE / TILE_SIZE);
 
-    // ranges (half-sizes)
+    // Ranges
     this.ACTIVE_HALF = ACTIVE_HALF;                                        // 50
     this.PRELOAD_HALF = ACTIVE_HALF + PRELOAD_RING_TILES * TILE_SIZE;      // 100
 
-    // registries
+    // Registries
     this.chunks = new Map();   // key "cx,cz" -> { kind, cx, cz }
     this.tiles = [];           // [{kind,cx,cz,tx,tz,center,mesh,state}]
     this._materials = new Map();
 
-    // shared plane geometry for tiles
+    // Shared geometry
     this._tileGeo = new THREE.PlaneGeometry(this.TILE_SIZE, this.TILE_SIZE);
     this._tileGeo.rotateX(-Math.PI / 2);
   }
@@ -59,26 +66,16 @@ export default class WorldEngine {
     }
   }
 
-  getLandscapeProxy() {
-    // lets input controllers raycast against terrain
-    return { mesh: this.group };
-  }
+  getLandscapeProxy() { return { mesh: this.group }; }
 
   update(playerPos) {
-    const px = playerPos.x;
-    const pz = playerPos.z;
-
+    const px = playerPos.x, pz = playerPos.z;
     for (const t of this.tiles) {
       const dx = Math.abs(px - t.center.x);
       const dz = Math.abs(pz - t.center.z);
-
       let desired = 'none';
-      if (dx <= this.ACTIVE_HALF && dz <= this.ACTIVE_HALF) {
-        desired = 'active';
-      } else if (dx <= this.PRELOAD_HALF && dz <= this.PRELOAD_HALF) {
-        desired = 'preload';
-      }
-
+      if (dx <= this.ACTIVE_HALF && dz <= this.ACTIVE_HALF) desired = 'active';
+      else if (dx <= this.PRELOAD_HALF && dz <= this.PRELOAD_HALF) desired = 'preload';
       if (desired !== t.state) this._applyState(t, desired);
     }
   }
@@ -119,7 +116,6 @@ export default class WorldEngine {
     if (state === 'active') {
       mat = new THREE.MeshStandardMaterial({ color, roughness: 1, metalness: 0 });
     } else {
-      // preload “blur placeholder”: muted & semi-transparent
       const c = color.clone().lerp(new THREE.Color('#999999'), 0.35);
       mat = new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.55 });
     }
@@ -128,18 +124,14 @@ export default class WorldEngine {
   }
 
   _colorFor(kind) {
-    // Make mining use the SAME color as desert
+    // Mining floor = same as desert
     if (kind === 'desert' || kind === 'mining') return Desert.baseColor.clone();
-    // fallback
     return Desert.baseColor.clone();
   }
 
   dispose() {
     for (const t of this.tiles) {
-      if (t.mesh) {
-        this.group.remove(t.mesh);
-        t.mesh.geometry?.dispose();
-      }
+      if (t.mesh) { this.group.remove(t.mesh); t.mesh.geometry?.dispose(); }
     }
     this.tiles.length = 0;
     for (const m of this._materials.values()) m.dispose?.();
@@ -147,4 +139,78 @@ export default class WorldEngine {
     this._tileGeo.dispose();
     this.scene.remove(this.group);
   }
+}
+
+/** Entrypoint for the loader (was in miningarea.js before) */
+export async function show({ rootId = 'game-root' } = {}) {
+  // Root
+  let root = document.getElementById(rootId);
+  if (!root) { root = document.createElement('div'); root.id = rootId; document.body.appendChild(root); }
+
+  // View
+  const viewport = new Viewport({ root });
+  viewport.setClearColor(0x0b0f14, 1);
+  viewport.renderer.shadowMap.enabled = true;
+  viewport.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+  // Scene + lighting
+  const scene = new THREE.Scene();
+  const lighting = new Lighting(scene);
+
+  // Camera + orbit
+  const camera = new Camera();
+  viewport.setScene(scene);
+  viewport.setCamera(camera.threeCamera);
+  viewport.start();
+  const orbitController = new CameraController(viewport.domElement, camera);
+
+  // World + chunks (mining center + desert ring)
+  const world = new WorldEngine(scene, {
+    CHUNK_SIZE: 50,
+    TILE_SIZE: 10,
+    ACTIVE_HALF: 50,
+    PRELOAD_RING_TILES: 5
+  });
+  world.registerChunk('mining', 0, 0);
+  world.registerChunk('desert',  1,  0);
+  world.registerChunk('desert', -1,  0);
+  world.registerChunk('desert',  0,  1);
+  world.registerChunk('desert',  0, -1);
+  world.registerChunk('desert',  1,  1);
+  world.registerChunk('desert',  1, -1);
+  world.registerChunk('desert', -1,  1);
+  world.registerChunk('desert', -1, -1);
+  world.buildTiles();
+
+  // Character
+  const character = new Character(scene);
+  await character.init(new THREE.Vector3(0, 0, 2));
+  camera.setTarget(character.object);
+  camera.handleResize();
+
+  // Tap-to-move
+  const movement = new CharacterMovement(
+    viewport.domElement,
+    { scene },
+    camera,
+    character,
+    world.getLandscapeProxy()
+  );
+
+  // Tile LOD updates around character
+  const step = () => {
+    if (character.object) world.update(character.object.position);
+    requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+
+  // Resize
+  window.addEventListener('resize', () => camera.handleResize(), { passive: true });
+
+  // Debug
+  window.Dustborne = Object.assign(window.Dustborne || {}, {
+    viewport, scene, lighting, camera, orbitController, world, character, movement
+  });
+
+  console.log('WorldEngine booted: mining at (0,0) with desert ring; world engine owns camera/viewport/character.');
 }
