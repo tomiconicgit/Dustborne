@@ -6,30 +6,39 @@ export default class DevTools {
     this.scene = scene;
     this.world = world;
 
+    // If caller passed a <canvas>, fall back to <body> (canvas can't show DOM children)
+    if (!domOverlayParent || String(domOverlayParent.tagName).toLowerCase() === 'canvas') {
+      domOverlayParent = document.body;
+    }
+
+    // Overlay group (grid + markers)
     this.group = new THREE.Group();
     this.group.name = 'DevGridOverlay';
     this.group.visible = false;
     this.scene.add(this.group);
 
-    // UI toggle (mobile-friendly)
+    // Toggle button (mobile friendly, safe-area aware)
     this.button = document.createElement('button');
     this.button.textContent = 'Grid';
+    this.button.setAttribute('aria-label', 'Toggle grid/blocked overlay');
     Object.assign(this.button.style, {
       position: 'fixed',
-      top: '10px',
-      right: '10px',
-      zIndex: 20_000,
+      top: 'calc(env(safe-area-inset-top) + 10px)',
+      right: 'calc(env(safe-area-inset-right) + 10px)',
+      zIndex: '20000',
       padding: '10px 12px',
       font: '600 12px/1 Inter, system-ui, -apple-system, sans-serif',
       color: '#111',
       background: '#f5eeda',
       border: '1px solid rgba(0,0,0,.2)',
-      borderRadius: '8px',
-      opacity: '0.85'
+      borderRadius: '10px',
+      opacity: '0.9',
+      boxShadow: '0 2px 8px rgba(0,0,0,.35)',
+      -webkitTapHighlightColor: 'transparent'
     });
     this.button.addEventListener('click', () => {
       this.group.visible = !this.group.visible;
-      this.button.style.opacity = this.group.visible ? '1' : '0.85';
+      this.button.style.opacity = this.group.visible ? '1' : '0.9';
     });
     domOverlayParent.appendChild(this.button);
   }
@@ -37,34 +46,32 @@ export default class DevTools {
   clear() {
     while (this.group.children.length) {
       const c = this.group.children.pop();
-      c.geometry?.dispose();
+      c.geometry?.dispose?.();
       if (c.material?.isMaterial) c.material.dispose();
     }
   }
 
   /**
-   * Build grid lines for the mining chunk (0,0) and mark blocked tiles.
-   * - Thin line mesh for tile borders (50×50)
-   * - Red X markers for !isWalkable tiles
+   * Builds grid lines for the primary 50×50 chunk and draws red X on blocked tiles.
+   * Call again after you change rock placement: window.Dustborne?.devtools?.build()
    */
   build() {
     this.clear();
-    const TILE = this.world.TILE_SIZE;      // 1
-    const SIZE = this.world.CHUNK_SIZE;     // 50
+
+    const TILE = this.world.TILE_SIZE;   // 1
+    const SIZE = this.world.CHUNK_SIZE;  // 50
     const HALF = SIZE * 0.5;
 
-    // --- Grid lines (vertical + horizontal) ---
+    // --- Grid lines ---
     const gridGeom = new THREE.BufferGeometry();
     const verts = [];
 
-    // 51 lines each direction to outline 50 tiles
+    // 51 lines each way to outline 50 cells
     for (let i = 0; i <= SIZE; i++) {
       const x = -HALF + i * TILE;
-      // vertical line from z=-HALF to z=+HALF at (x,0)
-      verts.push(x, 0.001, -HALF,  x, 0.001,  HALF);
+      verts.push(x, 0.001, -HALF,  x, 0.001,  HALF);  // vertical
       const z = -HALF + i * TILE;
-      // horizontal line from x=-HALF to x=+HALF at (z,0)
-      verts.push(-HALF, 0.001, z,  HALF, 0.001, z);
+      verts.push(-HALF, 0.001, z,  HALF, 0.001, z);   // horizontal
     }
 
     gridGeom.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
@@ -73,17 +80,17 @@ export default class DevTools {
     gridLines.renderOrder = 9999;
     this.group.add(gridLines);
 
-    // --- Blocked tile markers (red X) ---
+    // --- Blocked markers ---
     const xGeom = new THREE.BufferGeometry();
     const xVerts = [];
-    const xOffset = 0.35;
+    const o = 0.35;
 
     for (const t of this.world.tiles) {
       if (!t.isWalkable) {
         const cx = t.center.x, cz = t.center.z, y = 0.002;
         xVerts.push(
-          cx - xOffset, y, cz - xOffset,  cx + xOffset, y, cz + xOffset,
-          cx - xOffset, y, cz + xOffset,  cx + xOffset, y, cz - xOffset
+          cx - o, y, cz - o,  cx + o, y, cz + o,
+          cx - o, y, cz + o,  cx + o, y, cz - o
         );
       }
     }
@@ -92,7 +99,7 @@ export default class DevTools {
       xGeom.setAttribute('position', new THREE.Float32BufferAttribute(xVerts, 3));
       const xMat = new THREE.LineBasicMaterial({ color: 0xff3333, transparent: true, opacity: 1.0 });
       const xLines = new THREE.LineSegments(xGeom, xMat);
-      xLines.renderOrder = 10_000;
+      xLines.renderOrder = 10000;
       this.group.add(xLines);
     }
   }
