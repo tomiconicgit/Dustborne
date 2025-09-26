@@ -6,9 +6,11 @@ export default class Engine {
       { name: 'Viewport',              type: 'script', path: './src/core/viewport.js' },
       { name: 'Camera',                type: 'script', path: './src/core/camera.js' },
       { name: 'Lighting',              type: 'script', path: './src/core/lighting.js' },
-      { name: 'Character',             type: 'script', path: './src/core/logic/character.js' },           // ← fix
+      { name: 'World Engine',          type: 'script', path: './src/core/worldengine.js' },
+      { name: 'Character',             type: 'script', path: './src/core/logic/character.js' },
       { name: 'Character Movement',    type: 'script', path: './src/core/logic/charactermovement.js' },
-      { name: 'Mining Area Chunk',     type: 'script', path: './src/world/chunks/miningarea.js' }
+      { name: 'Mining Area Chunk',     type: 'script', path: './src/world/chunks/miningarea.js' },
+      { name: 'Desert Chunk',          type: 'script', path: './src/world/chunks/desert.js' }
     ];
   }
 
@@ -17,9 +19,11 @@ export default class Engine {
       { name: 'Viewport',              type: 'script', path: './src/core/viewport.js' },
       { name: 'Camera',                type: 'script', path: './src/core/camera.js' },
       { name: 'Lighting',              type: 'script', path: './src/core/lighting.js' },
-      { name: 'Character',             type: 'script', path: './src/core/logic/character.js' },           // ← fix
+      { name: 'World Engine',          type: 'script', path: './src/core/worldengine.js' },
+      { name: 'Character',             type: 'script', path: './src/core/logic/character.js' },
       { name: 'Character Movement',    type: 'script', path: './src/core/logic/charactermovement.js' },
-      { name: 'Mining Area Chunk',     type: 'script', path: './src/world/chunks/miningarea.js' }
+      { name: 'Mining Area Chunk',     type: 'script', path: './src/world/chunks/miningarea.js' },
+      { name: 'Desert Chunk',          type: 'script', path: './src/world/chunks/desert.js' }
     ];
   }
 
