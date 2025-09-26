@@ -10,7 +10,8 @@ export default class Engine {
         return [
             // Add every single script file for your game here as you create them.
             { name: 'Engine Core', type: 'script', path: './src/core/engine.js' },
-            { name: 'Test Screen', type: 'script', path: './src/core/test.js' }
+            { name: 'Test Screen', type: 'script', path: './src/core/test.js' },
+            { name: 'Mining Area Chunk', type: 'script', path: './src/world/chunks/miningarea.js' }
             // { name: 'Player Logic', type: 'script', path: './src/game/player.js' },
             // { name: 'UI Manager',   type: 'script', path: './src/ui/uimanager.js' },
         ];
