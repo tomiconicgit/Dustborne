@@ -1,27 +1,24 @@
 // file: src/core/logic/charactermovement.js
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { AStarPathfinder } from './pathfinding.js'; // ✨ NEW: Import the pathfinder
+import { AStarPathfinder } from './pathfinding.js';
 
 export default class CharacterMovement {
-  // ✨ UPDATED: Constructor accepts the `world` object for pathfinding
   constructor(domElement, game, camera, player, landscape, world) {
     this.domElement = domElement;
     this.game = game;
     this.camera = camera;
     this.player = player;
     this.landscape = landscape;
-    this.world = world; // Keep a reference to the world
+    this.world = world;
     this.raycaster = new THREE.Raycaster();
 
-    // ✨ NEW: Pathfinding and path following state
     this.pathfinder = new AStarPathfinder(world);
     this._path = null;
     this._currentWaypointIndex = 0;
 
     this.touchState = { isDragging: false, startPos: new THREE.Vector2() };
 
-    // Animation state (unchanged)
     this.walkUrl = './src/assets/models/animations/walking.glb';
     this.idleUrl = './src/assets/models/animations/idle.glb';
     this._mixer = null;
@@ -41,8 +38,7 @@ export default class CharacterMovement {
     this._lastT = performance.now();
     requestAnimationFrame(this.tick.bind(this));
   }
-  
-  // ✨ NEW: Main tick loop now handles path following
+
   tick(t) {
     if (!this._running) return;
     const dt = Math.min(0.05, (t - this._lastT) / 1000);
@@ -55,49 +51,51 @@ export default class CharacterMovement {
 
     this.player?.update(dt);
     this.camera?.update();
-    
-    // Path following logic
+
     if (this._path) {
       if (!this.player.isMoving()) {
-        // Player has reached the current waypoint, advance to the next one
         this._currentWaypointIndex++;
         if (this._currentWaypointIndex < this._path.length) {
-          const nextWaypoint = this._path[this._currentWaypointIndex];
-          this.player.moveTo(nextWaypoint);
+          this.player.moveTo(this._path[this._currentWaypointIndex]);
         } else {
-          // End of path reached
           this._path = null;
         }
       }
     }
 
-    // Animation control based on path state
-    const shouldBeWalking = this._path !== null;
-    if (shouldBeWalking && !this._isWalking) {
-      this._startWalk();
-    } else if (!shouldBeWalking && this._isWalking) {
-      this._stopWalk();
-      this._startIdle();
-    }
-    
-    if (!shouldBeWalking && !this._isIdling) {
-        this._startIdle();
-    }
+    const walking = this._path !== null;
+    if (walking && !this._isWalking) this._startWalk();
+    if (!walking && this._isWalking) { this._stopWalk(); this._startIdle(); }
+    if (!walking && !this._isIdling) this._startIdle();
 
     requestAnimationFrame(this.tick.bind(this));
   }
 
-  dispose() { /* ... unchanged ... */ }
-  onTouchStart(event) { /* ... unchanged ... */ }
-  onTouchMove(event) { /* ... unchanged ... */ }
-  onTouchEnd(event) {
-    if (!this.touchState.isDragging && event.changedTouches.length === 1 && event.touches.length === 0) {
-      this.handleTap(event.changedTouches[0]);
+  dispose() {
+    this.domElement.removeEventListener('touchstart', this._onStart);
+    this.domElement.removeEventListener('touchmove',  this._onMove);
+    this.domElement.removeEventListener('touchend',   this._onEnd);
+  }
+
+  onTouchStart(e) {
+    if (e.touches.length === 1) {
+      this.touchState.isDragging = false;
+      this.touchState.startPos.set(e.touches[0].clientX, e.touches[0].clientY);
+    }
+  }
+  onTouchMove(e) {
+    e.preventDefault();
+    if (e.touches.length !== 1) return;
+    const cur = new THREE.Vector2(e.touches[0].clientX, e.touches[0].clientY);
+    if (this.touchState.startPos.distanceTo(cur) > 10) this.touchState.isDragging = true;
+  }
+  onTouchEnd(e) {
+    if (!this.touchState.isDragging && e.changedTouches.length === 1 && e.touches.length === 0) {
+      this.handleTap(e.changedTouches[0]);
     }
     this.touchState.isDragging = false;
   }
 
-  // ✨ UPDATED: handleTap now uses the pathfinder
   async handleTap(touch) {
     if (!this.camera?.threeCamera || !this.player?.object) return;
 
@@ -108,44 +106,101 @@ export default class CharacterMovement {
 
     this.raycaster.setFromCamera(tapNDC, this.camera.threeCamera);
     const intersects = this.raycaster.intersectObjects(this.game.scene.children, true);
-    
+
     let landscapeHit = null;
     for (const hit of intersects) {
-      if (hit.object.userData.isMineable) {
-        // Future: Pathfind to a tile adjacent to the rock
-        console.log("Tapped on a mineable rock.");
+      if (hit.object?.userData?.isMineable) {
+        // Path to an adjacent walkable tile next to the rock
+        const rockPos = hit.object.getWorldPosition(new THREE.Vector3());
+        const rockTile = this.world.getTileAt(rockPos);
+        if (!rockTile) return;
+
+        const neighbors = this.world.getNeighbors(rockTile).filter(t => t.isWalkable);
+        if (!neighbors.length) return;
+
+        const startTile = this.world.getTileAt(this.player.object.position) ?? neighbors[0];
+        const best = neighbors.reduce((a,b) => {
+          const da = Math.abs(a.gridX - startTile.gridX) + Math.abs(a.gridZ - startTile.gridZ);
+          const db = Math.abs(b.gridX - startTile.gridX) + Math.abs(b.gridZ - startTile.gridZ);
+          return db < da ? b : a;
+        });
+
+        const path = this.pathfinder.findPath(this.player.object.position, best.center);
+        if (path && path.length) {
+          this.player.showTapMarkerAt?.(best.center);
+          this._path = path;
+          this._currentWaypointIndex = 0;
+          this.player.moveTo(this._path[0]);
+        }
         return;
       }
       if (this.landscape?.mesh?.children?.includes(hit.object)) {
-        if (!landscapeHit) landscapeHit = hit;
+        landscapeHit = hit;
+        break;
       }
     }
-    
+
     if (!landscapeHit) return;
 
-    const startPos = this.player.object.position;
-    const endPos = landscapeHit.point;
-    
-    // Find a path using the A* algorithm
-    const path = this.pathfinder.findPath(startPos, endPos);
+    const endTile = this.world.getTileAt(landscapeHit.point);
+    if (!endTile || !endTile.isWalkable) return;
 
-    if (path && path.length > 0) {
-      this.player.showTapMarkerAt?.(endPos);
+    const path = this.pathfinder.findPath(this.player.object.position, endTile.center);
+    if (path && path.length) {
+      this.player.showTapMarkerAt?.(endTile.center);
       this._path = path;
       this._currentWaypointIndex = 0;
-      this.player.moveTo(this._path[0]); // Start moving to the first waypoint
-    } else {
-      console.warn("No path found to the destination.");
-      // Optional: show some feedback that the location is unreachable
+      this.player.moveTo(this._path[0]);
     }
   }
 
-  // Animation utility functions (_startIdle, _stopIdle, etc.) are mostly unchanged
-  // ... (paste the existing animation methods here)
-  async _startIdle() { /* ... */ }
-  _stopIdle() { /* ... */ }
-  async _startWalk() { /* ... */ }
-  _stopWalk() { /* ... */ }
-  async _loadWalkClip() { /* ... */ }
-  async _loadIdleClip() { /* ... */ }
+  // --- animation helpers ---
+  async _ensureMixer() {
+    if (!this._mixer && this.player?.object) {
+      this._mixer = new THREE.AnimationMixer(this.player.object);
+    }
+    return this._mixer;
+  }
+
+  async _loadClip(url) {
+    const gltf = await new GLTFLoader().loadAsync(url);
+    const clip = gltf.animations?.[0];
+    if (!clip) throw new Error(`No animation in ${url}`);
+    return clip;
+  }
+
+  async _startIdle() {
+    await this._ensureMixer();
+    if (!this._idleAction) {
+      const clip = await this._loadClip(this.idleUrl);
+      this._idleAction = this._mixer.clipAction(clip);
+      this._idleAction.setLoop(THREE.LoopRepeat);
+      this._idleAction.enabled = true;
+    }
+    if (!this._idleAction.isRunning()) this._idleAction.play();
+    if (this._walkAction) this._walkAction.crossFadeTo(this._idleAction, 0.2, false);
+    this._isIdling = true;
+  }
+  _stopIdle() {
+    if (this._idleAction) this._idleAction.stop();
+    this._isIdling = false;
+  }
+
+  async _startWalk() {
+    await this._ensureMixer();
+    if (!this._walkAction) {
+      const clip = await this._loadClip(this.walkUrl);
+      this._walkAction = this._mixer.clipAction(clip);
+      this._walkAction.setLoop(THREE.LoopRepeat);
+      this._walkAction.enabled = true;
+    }
+    if (!this._walkAction.isRunning()) this._walkAction.play();
+    if (this._idleAction) this._idleAction.crossFadeTo(this._walkAction, 0.15, false);
+    this._isWalking = true;
+    this._isIdling = false;
+  }
+  _stopWalk() {
+    if (this._walkAction) this._walkAction.stop();
+    this._isWalking = false;
+  }
 }
