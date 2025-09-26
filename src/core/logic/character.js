@@ -1,13 +1,16 @@
-// file: src/core/logic/charatcer.js
+// file: src/core/logic/character.js
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 export default class Character {
-  constructor(scene, url = './src/assets/models/charatcer.glb') {
+  // ✨ UPDATED: Constructor now accepts a `collidables` group
+  constructor(scene, collidables, url = './src/assets/models/charatcer.glb') {
     this.scene = scene;
     this.url = url;
+    this.collidables = collidables; // The group of solid objects (e.g., rocks)
 
     this.object = null;
+    this.radius = 0.4; // ✨ NEW: An approximate radius for the character for collision checks
 
     // movement
     this._moving = false;
@@ -35,7 +38,6 @@ export default class Character {
         o.castShadow = true;
         o.receiveShadow = true;
         if (o.material && o.material.isMaterial && !o.material.isMeshStandardMaterial) {
-          // ensure lit by scene lights
           o.material = new THREE.MeshStandardMaterial({
             color: (o.material.color && o.material.color.clone()) || new THREE.Color(0xffffff),
             metalness: 0.1,
@@ -51,11 +53,10 @@ export default class Character {
     return this;
   }
 
-  /** Simple straight-line movement */
   moveTo(point) {
     if (!this.object) return;
     this._dest.copy(point);
-    this._dest.y = this.object.position.y; // keep on ground plane
+    this._dest.y = this.object.position.y;
     this._moving = true;
   }
 
@@ -69,6 +70,7 @@ export default class Character {
     const pos = this.object.position;
     const to = new THREE.Vector3().subVectors(this._dest, pos);
     const dist = to.length();
+
     if (dist < this._epsilon) {
       pos.copy(this._dest);
       this._moving = false;
@@ -77,16 +79,46 @@ export default class Character {
 
     to.normalize();
     const step = Math.min(dist, this._speed * dt);
+    
+    // ✨ NEW: Collision detection logic
+    const nextPos = pos.clone().addScaledVector(to, step);
+    let collision = false;
+    
+    if (this.collidables?.children.length > 0) {
+      // The `collidables` group contains the 'CopperOreCluster' group
+      for (const cluster of this.collidables.children) {
+        // The cluster group contains the individual rock clones
+        for (const rock of cluster.children) {
+          if (rock.userData.isSolid) {
+            const rockPos = rock.position;
+            const rockRadius = rock.userData.collisionRadius || 1;
+            const distance = nextPos.distanceTo(rockPos);
+
+            if (distance < this.radius + rockRadius) {
+              collision = true;
+              break; // Exit inner loop
+            }
+          }
+        }
+        if (collision) break; // Exit outer loop
+      }
+    }
+
+    // If a collision is detected, stop moving and cancel the destination
+    if (collision) {
+      this._moving = false;
+      return;
+    }
+
+    // If no collision, apply the movement
     pos.addScaledVector(to, step);
 
-    // face travel direction (y-up)
     if (step > 0.0001) {
       const yaw = Math.atan2(this._dest.x - pos.x, this._dest.z - pos.z);
       this.object.rotation.set(0, yaw, 0);
     }
   }
 
-  /** Visual feedback for taps */
   showTapMarkerAt(point) {
     if (!this.scene) return;
     if (this._marker) {
@@ -102,7 +134,7 @@ export default class Character {
     ring.position.set(point.x, 0.02, point.z);
     this.scene.add(ring);
     this._marker = ring;
-    // fade out
+    
     const start = performance.now();
     const fade = (t) => {
       const k = Math.min(1, (t - start) / 600);
@@ -121,7 +153,6 @@ export default class Character {
   setHighlightedObject(obj) {
     if (this._highlighted === obj) return;
 
-    // clear previous
     if (this._highlighted) {
       const prevs = this._prevMatState.get(this._highlighted);
       if (prevs) {
@@ -142,7 +173,6 @@ export default class Character {
 
     if (!obj) return;
 
-    // apply highlight (if material supports emissive)
     const store = new Map();
     obj.traverse((m) => {
       if (m.isMesh && m.material && m.material.emissive) {
@@ -158,7 +188,6 @@ export default class Character {
   }
 
   startMining(target) {
-    // stub for future logic
     console.log('[Character] startMining on', target?.name || target);
   }
 }
