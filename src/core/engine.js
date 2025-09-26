@@ -27,5 +27,6 @@ export default class Engine {
     ];
   }
 
-  getStartModule() { return { path: './src/world/chunks/miningarea.js', fn: 'show' }; }
+  // Loader now boots the world engine (not the mining chunk)
+  getStartModule() { return { path: './src/core/worldengine.js', fn: 'show' }; }
 }
