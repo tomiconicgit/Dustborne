@@ -6,6 +6,8 @@ export default class Engine {
     return [
       { name: 'Engine Core',        type: 'script', path: './src/core/engine.js' },
       { name: 'Viewport',           type: 'script', path: './src/core/viewport.js' },
+      { name: 'Camera',             type: 'script', path: './src/core/camera.js' },
+      { name: 'Lighting',           type: 'script', path: './src/core/lighting.js' },
       { name: 'Mining Area Chunk',  type: 'script', path: './src/world/chunks/miningarea.js' }
     ];
   }
@@ -14,6 +16,8 @@ export default class Engine {
     console.log("ENGINE: Providing initial assets for targeted load.");
     return [
       { name: 'Viewport',          type: 'script', path: './src/core/viewport.js' },
+      { name: 'Camera',            type: 'script', path: './src/core/camera.js' },
+      { name: 'Lighting',          type: 'script', path: './src/core/lighting.js' },
       { name: 'Mining Area Chunk', type: 'script', path: './src/world/chunks/miningarea.js' }
     ];
   }
