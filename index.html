@@ -2,11 +2,22 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    
     <title>Dustborne</title>
+    
     <style>
-        /* Minimal body style to prevent flash of white */
-        body { margin: 0; overflow: hidden; background-color: #000; }
+        /* This prevents any flash of a white background before the loader starts,
+           ensuring a smooth, native-like startup experience. */
+        html, body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #000;
+            width: 100%;
+            height: 100%;
+        }
     </style>
 </head>
 <body>
@@ -19,6 +30,6 @@
         }
     </script>
 
-    <script type="module" src="./main.js"></script>
+    <script type="module" src="./bootstrap.js"></script>
 </body>
 </html>
