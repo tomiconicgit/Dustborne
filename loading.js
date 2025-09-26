@@ -29,11 +29,8 @@ class LoadingManager {
         const progress = ((i + 1) / manifest.length) * 100;
         this._updateProgress(`Validating: ${task.name}`, progress);
         await delay(120);
-        try {
-          await this._validateFile(task);
-        } catch (err) {
-          return this.fail(err, task);
-        }
+        try { await this._validateFile(task); }
+        catch (err) { return this.fail(err, task); }
       }
     }
     this.log('✔ Phase 1 complete.', 'success');
@@ -59,7 +56,7 @@ class LoadingManager {
     }
     this.log('✔ Phase 2 complete.', 'success');
 
-    // 100% + green; reveal Start
+    // 100% + green; reveal Start (no layout shift)
     this._updateProgress('Ready to start', 100, { complete: true });
     this._showStartButton();
   }
@@ -67,12 +64,11 @@ class LoadingManager {
   _showStartButton() {
     this.startButton.disabled = false;
     this.startButton.setAttribute('aria-disabled', 'false');
-    this.startButton.style.display = 'inline-flex';
+    this.startButton.classList.add('show'); // fade in; row height reserved from start
 
     this.startButton.onclick = null;
     this.startButton.addEventListener('click', () => {
       if (this.loadingScreen.classList.contains('fade-out')) return;
-
       this.startButton.classList.add('btn-pressed');
       this.loadingScreen.classList.add('fade-out');
 
@@ -80,14 +76,15 @@ class LoadingManager {
         this.loadingScreen.remove();
         const testModule = this.loadedModules.get('./src/core/test.js');
         if (testModule && typeof testModule.show === 'function') {
-          try { testModule.show(); } catch (err) { console.error('Start screen handler threw:', err); }
+          try { testModule.show(); } catch (err) { console.error('Start handler threw:', err); }
         } else {
           console.error("Could not find the 'show' function in ./src/core/test.js");
         }
       };
+
       let fired = false;
       this.loadingScreen.addEventListener('transitionend', () => { if (fired) return; fired = true; run(); }, { once: true });
-      setTimeout(() => { if (!fired) run(); }, 1200);
+      setTimeout(() => { if (!fired) run(); }, 1200); // iOS fallback
     }, { once: true });
   }
 
@@ -115,7 +112,7 @@ class LoadingManager {
 
     if (level === 'error') {
       this.errorCount++;
-      this.copyErrorsBtn.style.display = 'inline-flex';
+      this.copyErrorsBtn.classList.add('show'); // fade in; space reserved
     }
 
     const consoleLevel = level === 'success' ? 'log' : level;
@@ -130,19 +127,19 @@ class LoadingManager {
     this.log(`✖ FATAL during [${task?.name || 'unknown'}]: ${msg}`, 'error');
     console.error('[LoadingManager] Failure context:', { task, error });
 
-    this.statusElement.textContent = 'Fatal Error';
-    this.percentEl.textContent = 'FAIL';
+    this.statusElement.textContent = 'Fatal Error'; // hidden but kept for code simplicity
 
     this.progressBar.classList.remove('complete');
     this.progressBar.classList.add('error');
     this.progressBar.style.width = '100%';
+    this.percentEl.textContent = 'FAIL';
 
-    this.copyErrorsBtn.style.display = 'inline-flex';
+    this.copyErrorsBtn.classList.add('show');
   }
 
   _updateProgress(message, progress, opts = {}) {
     if (this.hasFailed) return;
-    this.statusElement.textContent = message;
+    this.statusElement.textContent = message; // hidden (sr-only)
     const pct = Math.max(0, Math.min(100, Math.floor(progress)));
     this.percentEl.textContent = `${pct}%`;
     this.progressBar.style.width = `${pct}%`;
@@ -156,7 +153,7 @@ class LoadingManager {
   _copyErrorsToClipboard() {
     const errs = [...this.logContainer.querySelectorAll('.log-error')].map(p => p.textContent.trim());
     const text = errs.length ? errs.join('\n') : 'No errors logged.';
-    const doCopy = async () => {
+    (async () => {
       try {
         await navigator.clipboard.writeText(text);
         this.log('Copied errors to clipboard.', 'success');
@@ -169,8 +166,7 @@ class LoadingManager {
         ta.remove();
         this.log('Copied errors to clipboard (fallback).', 'success');
       }
-    };
-    doCopy();
+    })();
   }
 
   _wireGlobalErrorCapture() {
@@ -186,12 +182,15 @@ class LoadingManager {
 
   _cacheDOMElements() {
     this.loadingScreen  = document.getElementById('dustborne-loading-screen');
+    this.progressOuter  = document.getElementById('dustborne-loading-bar-container');
     this.progressBar    = document.getElementById('dustborne-loading-bar');
-    this.statusElement  = document.getElementById('dustborne-loading-status');
-    this.logContainer   = document.getElementById('dustborne-log-container');
-    this.percentEl      = document.getElementById('dustborne-loading-percentage');
+    this.percentEl      = document.getElementById('dustborne-bar-label');
+    this.statusElement  = document.getElementById('dustborne-loading-status'); // sr-only
     this.startButton    = document.getElementById('dustborne-start-button');
     this.copyErrorsBtn  = document.getElementById('dustborne-copy-errors-btn');
+    this.logContainer   = document.getElementById('dustborne-log-container');
+
+    this.copyErrorsBtn.addEventListener('click', () => this._copyErrorsToClipboard());
   }
 
   _createDOM() {
@@ -200,50 +199,46 @@ class LoadingManager {
     wrap.innerHTML = `
       <h1 class="db-brand" aria-label="Dustborne">Dustborne</h1>
 
-      <div class="db-modal">
-        <div class="db-modal-body">
-          <div id="dustborne-status-container" class="db-status">
-            <span id="dustborne-loading-status" aria-live="polite">Initializing…</span>
-            <span id="dustborne-loading-percentage" class="db-percent">0%</span>
-          </div>
+      <div class="db-center">
+        <!-- status kept for accessibility / code simplicity (hidden) -->
+        <span id="dustborne-loading-status" class="sr-only">Initializing…</span>
 
-          <div id="dustborne-loading-bar-container" class="db-bar-outer" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-            <div id="dustborne-loading-bar" class="db-bar-fill"></div>
-          </div>
-
-          <div id="dustborne-log-container" class="db-log" aria-live="polite" aria-label="Debugger log"></div>
+        <div id="dustborne-loading-bar-container" class="db-bar-outer"
+             role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"
+             aria-label="Loading progress">
+          <div id="dustborne-loading-bar" class="db-bar-fill"></div>
+          <div id="dustborne-bar-label" class="db-bar-label">0%</div>
         </div>
 
-        <div class="db-modal-footer">
-          <button id="dustborne-copy-errors-btn" class="db-btn db-btn-ghost" style="display:none" aria-label="Copy errors">Copy errors</button>
-          <button id="dustborne-start-button" class="db-btn db-btn-primary" disabled aria-disabled="true">Start</button>
+        <!-- Controls row has fixed height from start to avoid layout shift -->
+        <div class="db-controls" aria-live="polite">
+          <button id="dustborne-start-button" class="db-btn db-btn-primary" disabled aria-disabled="true">Start Game</button>
+          <button id="dustborne-copy-errors-btn" class="db-btn db-btn-ghost" aria-label="Copy errors">Copy Errors</button>
         </div>
+      </div>
+
+      <!-- Floating debugger card at bottom -->
+      <div class="db-debug-card" role="region" aria-label="Debugger">
+        <div class="db-debug-header">Debugger</div>
+        <div id="dustborne-log-container" class="db-log"></div>
       </div>
     `;
     document.body.appendChild(wrap);
-
-    wrap.addEventListener('click', (e) => {
-      if (e.target && e.target.id === 'dustborne-copy-errors-btn') this._copyErrorsToClipboard();
-    });
   }
 
   _createStyles() {
     const css = `
       @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-
-      /* If you self-host Druk Wide, declare it here (local lookup as fallback) */
-      @font-face {
-        font-family: 'Druk Wide';
+      @font-face { font-family: 'Druk Wide';
         src: local('Druk Wide'), local('Druk Wide Trial'), local('DrukWide');
         font-weight: 700; font-style: normal; font-display: swap;
       }
 
       :root {
         --db-bg: #0a0c10;
-        --db-glass: rgba(16,18,24,0.6);
-        --db-stroke: rgba(255,255,255,0.08);
         --db-text: #e6e9ef;
         --db-subtle: #a1a8b3;
+        --db-stroke: rgba(255,255,255,0.08);
         --db-blue: #42a5ff;
         --db-blue-glow: rgba(66,165,255,0.45);
         --db-green: #25c46a;
@@ -252,64 +247,44 @@ class LoadingManager {
         --db-red-glow: rgba(255,77,77,0.45);
       }
 
+      .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+
       #dustborne-loading-screen {
         position: fixed; inset: 0; z-index: 10000;
-        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+        display: flex; flex-direction: column; align-items: center;
         background: radial-gradient(1200px 800px at 20% 10%, rgba(66,165,255,0.08), transparent 60%),
                     radial-gradient(900px 600px at 80% 90%, rgba(37,196,106,0.08), transparent 55%),
                     var(--db-bg);
         color: var(--db-text);
         font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-        transition: opacity .9s ease, visibility .9s ease;
-        opacity: 1; visibility: visible;
+        opacity: 1; visibility: visible; transition: opacity .9s ease, visibility .9s ease;
         padding: 24px 12px;
       }
       #dustborne-loading-screen.fade-out { opacity: 0; visibility: hidden; pointer-events: none; }
 
       .db-brand {
         font-family: 'Druk Wide', Impact, 'Arial Black', system-ui, sans-serif;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 2px;
-        margin: 0 0 6px 0;
-        font-size: clamp(28px, 8vw, 72px);
-        line-height: 1;
+        font-weight: 700; text-transform: uppercase; letter-spacing: 2px;
+        margin: 12px 0 10px; font-size: clamp(28px, 8vw, 72px); line-height: 1;
         background: linear-gradient(180deg, #f0f0f0 0%, #a8a8a8 25%, #6a6a6a 50%, #a8a8a8 75%, #f0f0f0 100%);
-        -webkit-background-clip: text; background-clip: text;
-        -webkit-text-fill-color: transparent;
+        -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
         text-shadow: 0 2px 0 rgba(0,0,0,0.35), 0 12px 28px rgba(0,0,0,0.35);
       }
 
-      .db-modal {
-        width: min(92vw, 760px);
-        border-radius: 16px;
-        background: var(--db-glass);
-        backdrop-filter: blur(18px) saturate(1.2);
-        -webkit-backdrop-filter: blur(18px) saturate(1.2);
-        border: 1px solid var(--db-stroke);
-        box-shadow: 0 20px 60px rgba(0,0,0,.45), 0 0 0 1px rgba(255,255,255,.02) inset;
-        overflow: clip;
+      .db-center {
+        flex: 1; width: 100%;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 14px;
       }
-
-      .db-modal-body { padding: 16px; }
-      .db-modal-footer {
-        display: flex; align-items: center; justify-content: space-between;
-        padding: 14px 16px; border-top: 1px solid var(--db-stroke);
-      }
-
-      .db-status {
-        display: flex; align-items: baseline; justify-content: space-between;
-        font-size: 14px; color: var(--db-subtle); margin-bottom: 10px;
-      }
-      .db-percent { font-variant-numeric: tabular-nums; color: var(--db-text); }
 
       .db-bar-outer {
-        width: 100%; height: 12px; /* thicker */
+        width: min(92vw, 760px); height: 14px; /* thicker */
         background: rgba(255,255,255,0.06);
         border: 1px solid var(--db-stroke);
         border-radius: 999px;
         padding: 2px;
         overflow: hidden;
+        position: relative;
         box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
       }
       .db-bar-fill {
@@ -317,7 +292,7 @@ class LoadingManager {
         border-radius: 999px;
         background: linear-gradient(90deg, var(--db-blue), #7bc4ff);
         box-shadow: 0 0 14px var(--db-blue-glow);
-        transition: width .35s ease, background .35s ease, box-shadow .35s ease, transform .35s ease;
+        transition: width .35s ease, background .35s ease, box-shadow .35s ease;
         transform: translateZ(0);
       }
       .db-bar-fill.complete {
@@ -328,34 +303,34 @@ class LoadingManager {
         background: linear-gradient(90deg, var(--db-red), #ff8a8a);
         box-shadow: 0 0 14px var(--db-red-glow);
       }
-
-      .db-log {
-        margin-top: 14px; height: 160px; overflow: auto;
-        border: 1px solid var(--db-stroke);
-        background: rgba(0,0,0,0.25);
-        border-radius: 12px;
-        padding: 10px;
-        font-size: 12.5px;
-        line-height: 1.55;
-        scrollbar-width: thin;
+      .db-bar-label {
+        position: absolute; inset: 0;
+        display: grid; place-items: center;
+        font-size: 12px; font-weight: 700; letter-spacing: .4px;
+        color: #0b1220; /* high contrast over the fill */
+        text-shadow: 0 1px 0 rgba(255,255,255,0.35);
+        pointer-events: none;
       }
-      .db-log p { margin: 0; padding: 2px 0; white-space: pre-wrap; display: flex; gap: 8px; }
-      .log-timestamp { color: #6f7682; flex-shrink: 0; }
-      .log-info { color: #9acbff; }
-      .log-success { color: #8ff2b3; }
-      .log-warn { color: #ffd46b; }
-      .log-error { color: #ff8484; font-weight: 600; }
 
+      /* Controls row with reserved height to avoid layout shift */
+      .db-controls {
+        width: min(92vw, 760px);
+        height: 48px; /* reserve space always */
+        display: flex; align-items: center; justify-content: center; gap: 12px;
+      }
       .db-btn {
         appearance: none; border: 0; cursor: pointer;
         display: inline-flex; align-items: center; justify-content: center;
         gap: 8px; padding: 10px 16px; border-radius: 12px;
-        font-weight: 600; letter-spacing: .2px; transition: transform .08s ease, box-shadow .2s ease, background .2s ease;
-        will-change: transform;
+        font-weight: 700; letter-spacing: .2px;
+        transition: opacity .35s ease, visibility .35s ease, transform .08s ease, box-shadow .2s ease, background .2s ease;
+        will-change: opacity, transform;
+        opacity: 0; visibility: hidden; pointer-events: none; /* hidden by default, space kept by row */
       }
+      .db-btn.show { opacity: 1; visibility: visible; pointer-events: auto; }
       .db-btn:active { transform: translateY(1px); }
 
-      .db-btn-primary[disabled], .db-btn-primary[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
+      .db-btn-primary[disabled], .db-btn-primary[aria-disabled="true"] { opacity: .55; }
       .db-btn-primary {
         color: #0b1220;
         background: linear-gradient(180deg, #8ec9ff, #5bb2ff);
@@ -372,6 +347,37 @@ class LoadingManager {
       .db-btn-ghost:hover { background: rgba(255,255,255,0.09); }
 
       .btn-pressed { filter: brightness(.96); }
+
+      /* Floating debugger card at bottom */
+      .db-debug-card {
+        position: fixed; left: 50%; transform: translateX(-50%);
+        bottom: 16px;
+        width: min(92vw, 760px);
+        background: rgba(16,18,24,0.6);
+        backdrop-filter: blur(14px) saturate(1.2);
+        -webkit-backdrop-filter: blur(14px) saturate(1.2);
+        border: 1px solid var(--db-stroke);
+        border-radius: 14px;
+        box-shadow: 0 14px 40px rgba(0,0,0,.45);
+        overflow: hidden;
+      }
+      .db-debug-header {
+        padding: 10px 12px;
+        font-size: 12px; font-weight: 700; color: var(--db-subtle);
+        border-bottom: 1px solid var(--db-stroke);
+      }
+      .db-log {
+        max-height: 28vh; min-height: 120px;
+        overflow: auto; padding: 10px 12px;
+        font-size: 12.5px; line-height: 1.55;
+        scrollbar-width: thin;
+      }
+      .db-log p { margin: 0; padding: 2px 0; white-space: pre-wrap; display: flex; gap: 8px; }
+      .log-timestamp { color: #6f7682; flex-shrink: 0; }
+      .log-info { color: #9acbff; }
+      .log-success { color: #8ff2b3; }
+      .log-warn { color: #ffd46b; }
+      .log-error { color: #ff8484; font-weight: 600; }
     `;
     const style = document.createElement('style');
     style.type = 'text/css';
