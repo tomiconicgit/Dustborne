@@ -1,150 +1,113 @@
-// File: loading.js
+// In loading.js, replace the entire start() method with this new logic.
 
-class LoadingManager {
-  constructor() {
-    this.loadingScreen = null;
-    this.progressBar = null;
-    this.statusElement = null;
-    this.logContainer = null;
-    this.percentEl = null;
-    this.hasFailed = false;
-
-    this._createStyles();
-    this._createDOM();
-    this._cacheDOMElements();
-
-    this.log('Initializing Loading Manager...');
-  }
-
-  // The async start method you provided is correct.
-  async start(GameClass) {
-    this.log('Loader received Game class.');
-    
-    if (!GameClass) {
-      this.fail(new Error("GameClass was not provided to the loader."), { name: 'Bootstrap' });
+  /**
+   * Starts a two-phase loading process.
+   * Phase 1: Validates all game files listed in a manifest.
+   * Phase 2: Asks the Engine what's needed and loads only those assets.
+   * @param {class} EngineClass - The main Engine class.
+   */
+  async start(EngineClass) {
+    if (!EngineClass) {
+      this.fail(new Error("EngineClass was not provided to the loader."), { name: 'Bootstrap' });
       return;
     }
 
-    const gameInstance = new GameClass();
-    this.log('Game instance created.');
-
-    if (typeof gameInstance.getLoadingTasks !== 'function') {
-        this.fail(new Error("Game instance does not have a 'getLoadingTasks' method."), { name: 'Manifest' });
-        return;
-    }
-    const tasks = gameInstance.getLoadingTasks();
+    // --- PHASE 1: VALIDATION ---
+    this.log('Starting Phase 1: Validating all game files...');
+    this._updateProgress('Validating game files...', 0);
     
-    if (!tasks || !tasks.length) {
-      this.log('No loading tasks provided by the game. Moving to initialization.', 'warn');
-    } else {
-      this.log(`Starting loading sequence with ${tasks.length} tasks from game manifest...`);
-      const totalTasks = tasks.length;
+    let allFiles;
+    try {
+      const response = await fetch('./file-manifest.json');
+      if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+      const manifest = await response.json();
+      allFiles = manifest.files;
+      this.log(`Manifest loaded. Found ${allFiles.length} files to validate.`);
+    } catch (error) {
+      this.fail(error, { name: 'Manifest Loading' });
+      return;
+    }
 
-      for (let i = 0; i < totalTasks; i++) {
-        const task = tasks[i];
-        const progress = ((i + 1) / totalTasks) * 100;
-        if (this.hasFailed) {
-          this.log(`Halting sequence due to previous error.`, 'warn');
-          return;
-        }
-        this._updateProgress(`Loading ${task.name}...`, progress);
-        this.log(`[${Math.floor(progress)}%] Loading ${task.name} from '${task.path}'`);
-        try {
-          await this._executeTask(task);
-          this.log(`✔ Success: ${task.name} loaded.`, 'success');
-        } catch (error) {
-          this.fail(error, task);
-          return;
-        }
+    for (let i = 0; i < allFiles.length; i++) {
+      const fileInfo = allFiles[i];
+      const progress = ((i + 1) / allFiles.length) * 100;
+      this._updateProgress(`Validating: ${fileInfo.path}`, progress);
+      try {
+        await this._validateFile(fileInfo);
+      } catch (error) {
+        this.fail(error, { name: `Validation of ${fileInfo.path}` });
+        return;
       }
     }
+    this.log('✔ Phase 1 Complete: All game files validated successfully.', 'success');
 
-    try {
-      this.log('All tasks complete. Initializing game...');
-      this._updateProgress('Initializing game...', 100);
-      await gameInstance.init();
-      
-      this.log('Game initialized. Starting game loop...');
-      gameInstance.start();
-    } catch (error) {
-        this.fail(error, { name: 'Game Initialization' });
-        return;
+
+    // --- PHASE 2: TARGETED LOADING ---
+    this.log('Starting Phase 2: Loading initial scene assets...');
+    this._updateProgress('Loading initial assets...', 0);
+    
+    const engineInstance = new EngineClass();
+    if (typeof engineInstance.getInitialRequiredAssets !== 'function') {
+      this.fail(new Error("Engine instance does not have a 'getInitialRequiredAssets' method."), { name: 'Asset Interrogation' });
+      return;
     }
+
+    // Ask the engine what it needs for the default game state.
+    const requiredAssets = engineInstance.getInitialRequiredAssets();
+    this.log(`Engine requires ${requiredAssets.length} assets for the initial scene.`);
+    
+    if (requiredAssets.length > 0) {
+        for (let i = 0; i < requiredAssets.length; i++) {
+            const assetInfo = requiredAssets[i];
+            const progress = ((i + 1) / requiredAssets.length) * 100;
+            this._updateProgress(`Loading: ${assetInfo.name}`, progress);
+            try {
+                // Use the existing _executeTask to actually load the file
+                await this._executeTask(assetInfo);
+                this.log(`✔ Loaded: ${assetInfo.name}`, 'success');
+            } catch (error) {
+                this.fail(error, { name: `Loading of ${assetInfo.name}` });
+                return;
+            }
+        }
+    }
+    this.log('✔ Phase 2 Complete: Initial scene assets are loaded.', 'success');
+
+
+    // --- FINAL BOOTSTRAP ---
+    try {
+      this.log('All phases complete. Initializing engine...');
+      await engineInstance.init();
+      this.log('Engine initialized. Starting game...');
+      engineInstance.start();
+    } catch (error) {
+      this.fail(error, { name: 'Engine Initialization' });
+      return;
+    }
+    
     this.finish();
   }
 
-  // --- The rest of the class (debugger, UI, etc.) ---
-
-  log(message, level = 'info') {
-    if (!this.logContainer) return;
-    const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 });
-    const p = document.createElement('p');
-    p.className = `log-${level}`;
-    p.innerHTML = `<span class="log-timestamp">[${timestamp}]</span> ${message}`;
-    this.logContainer.appendChild(p);
-    this.logContainer.scrollTop = this.logContainer.scrollHeight;
-    if (level === 'warn' || level === 'error') console[level](`[LoadingManager] ${message}`);
-    else console.log(`[LoadingManager] ${message}`);
-  }
-  
-  fail(error, task) {
-    if (this.hasFailed) return;
-    this.hasFailed = true;
-    const errorMessage = error?.message || 'An unknown error occurred.';
-    this.log(`✖ FATAL ERROR while loading ${task.name}: ${errorMessage}`, 'error');
-    console.error(`[LoadingManager] Failed on task: ${task.name}`, { task, error });
-    this.statusElement.textContent = 'Fatal Error';
-    this.percentEl.textContent = 'FAIL';
-    this.progressBar.classList.add('error');
-    this.progressBar.style.width = '100%';
-    if (error.stack) {
-        const stackElement = document.createElement('p');
-        stackElement.className = 'error-stack';
-        stackElement.textContent = error.stack;
-        this.logContainer.appendChild(stackElement);
-        this.logContainer.scrollTop = this.logContainer.scrollHeight;
+  /**
+   * Validates a file without fully loading it into memory.
+   * For scripts, it checks for syntax errors. For assets, it checks for existence.
+   */
+  async _validateFile(fileInfo) {
+    try {
+      if (fileInfo.type === 'script') {
+        // Dynamic import() is perfect for validation. It parses the script
+        // and throws an error if there's a syntax issue, without executing it.
+        await import(fileInfo.path);
+      } else {
+        // For any other file, a fetch request checks if it's accessible (not 404).
+        const response = await fetch(fileInfo.path);
+        if (!response.ok) {
+          throw new Error(`File not found or inaccessible (HTTP ${response.status})`);
+        }
+      }
+    } catch (error) {
+      // Re-throw with more context.
+      throw new Error(`Validation failed for ${fileInfo.path}: ${error.message}`);
     }
   }
 
-  finish() {
-    if (this.hasFailed) return;
-    this.log('Initialization complete! Starting the game.', 'success');
-    this._updateProgress('Ready!', 100);
-    setTimeout(() => {
-      this.loadingScreen.classList.add('fade-out');
-      this.loadingScreen.addEventListener('transitionend', () => this.loadingScreen.remove(), { once: true });
-    }, 750);
-  }
-  
-  _executeTask(task) {
-    switch (task.type) {
-      case 'script': return this._loadScript(task.path);
-      case 'json': return this._loadJSON(task.path);
-      case 'asset': return this._simulateAssetLoad(task.path);
-      default: return Promise.reject(new Error(`Unknown task type '${task.type}'`));
-    }
-  }
-
-  _loadScript(path) {
-    return new Promise((resolve, reject) => {
-      const script = document.createElement('script');
-      script.type = 'module';
-      script.src = path;
-      script.onload = () => resolve();
-      script.onerror = () => reject(new Error(`Script failed to load: ${path}`));
-      document.head.appendChild(script);
-    });
-  }
-
-  async _loadJSON(path) { /* ... fetch logic ... */ }
-  _simulateAssetLoad(path) { return new Promise(resolve => setTimeout(resolve, 50 + Math.random() * 200)); }
-  _updateProgress(message, progress) { /* ... UI update logic ... */ }
-  _cacheDOMElements() { /* ... getElementById logic ... */ }
-  _createStyles() { /* ... CSS injection logic ... */ }
-  _createDOM() { /* ... innerHTML logic ... */ }
-
-  // NOTE: I've truncated some of the UI methods for brevity, but you should use the full versions from our previous conversation.
-}
-
-const loadingManager = new LoadingManager();
-export default loadingManager;
