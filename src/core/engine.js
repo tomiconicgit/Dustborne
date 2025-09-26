@@ -9,6 +9,7 @@ export default class Engine {
       { name: 'World Engine',          type: 'script', path: './src/core/worldengine.js' },
       { name: 'Character',             type: 'script', path: './src/core/logic/character.js' },
       { name: 'Character Movement',    type: 'script', path: './src/core/logic/charactermovement.js' },
+      { name: 'Sky',                   type: 'script', path: './src/world/assets/sky/sky.js' },   // ← added
       { name: 'Mining Area Chunk',     type: 'script', path: './src/world/chunks/miningarea.js' },
       { name: 'Desert Chunk',          type: 'script', path: './src/world/chunks/desert.js' }
     ];
@@ -22,11 +23,11 @@ export default class Engine {
       { name: 'World Engine',          type: 'script', path: './src/core/worldengine.js' },
       { name: 'Character',             type: 'script', path: './src/core/logic/character.js' },
       { name: 'Character Movement',    type: 'script', path: './src/core/logic/charactermovement.js' },
+      { name: 'Sky',                   type: 'script', path: './src/world/assets/sky/sky.js' },   // ← added
       { name: 'Mining Area Chunk',     type: 'script', path: './src/world/chunks/miningarea.js' },
       { name: 'Desert Chunk',          type: 'script', path: './src/world/chunks/desert.js' }
     ];
   }
 
-  // Loader now boots the world engine (not the mining chunk)
   getStartModule() { return { path: './src/core/worldengine.js', fn: 'show' }; }
 }
