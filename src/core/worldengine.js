@@ -12,17 +12,19 @@ import DevTools from './devtools.js';
 
 export default class WorldEngine {
   constructor(scene, {
-    CHUNK_SIZE = 50,
-    TILE_SIZE  = 1,
-    ACTIVE_HALF = 50,
+    CHUNK_SIZE = 50,     // world units per chunk (square)
+    TILE_SIZE  = 1,      // world units per tile (1×1)
+    ACTIVE_HALF = 50,    // active LOD radius
     PRELOAD_RING_TILES = 5
   } = {}) {
     this.scene = scene;
 
+    // Terrain tiles parent
     this.group = new THREE.Group();
     this.group.name = 'LandscapeTiles';
     this.scene.add(this.group);
 
+    // Entities (rocks, props, etc.)
     this.entities = new THREE.Group();
     this.entities.name = 'WorldEntities';
     this.scene.add(this.entities);
@@ -34,17 +36,21 @@ export default class WorldEngine {
     this.ACTIVE_HALF = ACTIVE_HALF;
     this.PRELOAD_HALF = ACTIVE_HALF + PRELOAD_RING_TILES * TILE_SIZE;
 
-    this.chunks = new Map();
-    this.tiles = [];
-    this._tileMap = new Map();
-    this._materials = new Map();
+    this.chunks = new Map();     // key: "cx,cz" -> { kind, cx, cz }
+    this.tiles = [];             // flat list of tile records
+    this._tileMap = new Map();   // key: "gridX,gridZ" -> tile
+    this._materials = new Map(); // cache of tile materials
     this._kindSpawners = new Map();
 
+    // Shared plane for tiles (rotated to lie flat)
     this._tileGeo = new THREE.PlaneGeometry(this.TILE_SIZE, this.TILE_SIZE);
     this._tileGeo.rotateX(-Math.PI / 2);
   }
 
-  registerChunk(kind, cx, cz) { this.chunks.set(`${cx},${cz}`, { kind, cx, cz }); }
+  registerChunk(kind, cx, cz) {
+    this.chunks.set(`${cx},${cz}`, { kind, cx, cz });
+  }
+
   registerKindSpawner(kind, fn) {
     const arr = this._kindSpawners.get(kind) || [];
     arr.push(fn);
@@ -55,7 +61,10 @@ export default class WorldEngine {
     this.tiles = [];
     this._tileMap.clear();
 
-    const sorted = [...this.chunks.values()].sort((a,b) => (a.cz * 1000 + a.cx) - (b.cz * 1000 + b.cx));
+    const sorted = [...this.chunks.values()].sort(
+      (a, b) => (a.cz * 1000 + a.cx) - (b.cz * 1000 + b.cx)
+    );
+
     for (const { kind, cx, cz } of sorted) {
       const originX = cx * this.CHUNK_SIZE;
       const originZ = cz * this.CHUNK_SIZE;
@@ -75,7 +84,7 @@ export default class WorldEngine {
             mesh: null,
             state: 'none',
             isWalkable: true,
-            userData: {}
+            userData: {} // flags (e.g., { isDirt: true })
           };
 
           this.tiles.push(tile);
@@ -85,28 +94,29 @@ export default class WorldEngine {
     }
   }
 
+  /** World position -> tile (aligned with buildTiles centers) */
   getTileAt(worldPosition) {
-    const off = (this.TILES_PER_CHUNK / 2) - 0.5; // e.g., 24.5
+    const off = (this.TILES_PER_CHUNK / 2) - 0.5; // e.g., 24.5 for 50 tiles
     const gridX = Math.round((worldPosition.x / this.TILE_SIZE) + off);
     const gridZ = Math.round((worldPosition.z / this.TILE_SIZE) + off);
     return this._tileMap.get(`${gridX},${gridZ}`);
   }
 
-  // 4-way (kept for reference)
+  /** 4-way neighbors (N,S,E,W) */
   getNeighbors(tile) {
-    const neighbors = [];
+    const res = [];
     const dirs = [[0,1],[0,-1],[1,0],[-1,0]];
-    for (const [dx,dz] of dirs) {
+    for (const [dx, dz] of dirs) {
       const n = this._tileMap.get(`${tile.gridX + dx},${tile.gridZ + dz}`);
-      if (n) neighbors.push(n);
+      if (n) res.push(n);
     }
-    return neighbors;
+    return res;
   }
 
-  // 8-way with anti corner-cutting (used by A*)
+  /** 8-way neighbors with anti corner-cutting (for diagonal movement) */
   getNeighbors8(tile) {
     const res = [];
-    const { gridX:x, gridZ:z } = tile;
+    const { gridX: x, gridZ: z } = tile;
     const dirs = [
       [ 1,  0], [-1,  0], [ 0,  1], [ 0, -1],
       [ 1,  1], [ 1, -1], [-1,  1], [-1, -1]
@@ -114,6 +124,7 @@ export default class WorldEngine {
     for (const [dx, dz] of dirs) {
       const n = this._tileMap.get(`${x + dx},${z + dz}`);
       if (!n || !n.isWalkable) continue;
+      // block diagonal cut if either adjacent cardinal is blocked
       if (dx !== 0 && dz !== 0) {
         const a = this._tileMap.get(`${x + dx},${z}`);
         const b = this._tileMap.get(`${x},${z + dz}`);
@@ -131,7 +142,8 @@ export default class WorldEngine {
       if (!spawners?.length) continue;
       const center = new THREE.Vector3(cx * this.CHUNK_SIZE, 0, cz * this.CHUNK_SIZE);
       for (const fn of spawners) {
-        const p = Promise.resolve(fn({ scene: this.entities, center, cx, cz, world: this }))
+        const p = Promise
+          .resolve(fn({ scene: this.entities, center, cx, cz, world: this }))
           .then((maybeGroup) => { if (maybeGroup?.isObject3D) this.entities.add(maybeGroup); })
           .catch((err) => console.warn(`[WorldEngine] spawner '${kind}' failed:`, err));
         tasks.push(p);
@@ -193,64 +205,92 @@ export default class WorldEngine {
   }
 
   _colorFor(tile) {
-    const sand = Desert.baseColor.clone();
-    const dirt = new THREE.Color('#8b5a2b');
+    const sand = Desert.baseColor.clone();       // sandy beige
+    const dirt = new THREE.Color('#8b5a2b');    // normal brown
     if (tile.userData?.isDirt) return dirt;
     return sand;
   }
 
-  dispose() { /* noop */ }
+  dispose() {
+    // optional cleanup if you ever destroy the world
+  }
 }
 
 /** Loader entrypoint */
 export async function show({ rootId = 'game-root' } = {}) {
+  // root mount
   let root = document.getElementById(rootId);
-  if (!root) { root = document.createElement('div'); root.id = rootId; document.body.appendChild(root); }
+  if (!root) {
+    root = document.createElement('div');
+    root.id = rootId;
+    document.body.appendChild(root);
+  }
+
+  // viewport / renderer
   const viewport = new Viewport({ root });
   viewport.setClearColor(0x0b0f14, 1);
   viewport.renderer.shadowMap.enabled = true;
   viewport.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
+  // scene, sky, lighting
   const scene = new THREE.Scene();
   const lighting = new Lighting(scene);
   const sky = new Sky(scene, lighting);
+
+  // camera
   const camera = new Camera();
   viewport.setScene(scene);
   viewport.setCamera(camera.threeCamera);
   viewport.start();
   const orbitController = new CameraController(viewport.domElement, camera);
 
+  // world (1×1 tiles)
   const world = new WorldEngine(scene, { TILE_SIZE: 1 });
+
+  // chunks
   world.registerChunk('mining', 0, 0);
   world.registerChunk('desert',  1,  0);
   world.registerChunk('desert', -1,  0);
   world.registerChunk('desert',  0,  1);
   world.registerChunk('desert',  0, -1);
 
+  // mining spawner: marks 20×20 dirt & places 6 spaced rocks
   registerMining(world);
+
   world.buildTiles();
   await world.spawnStaticContent();
 
+  // character
   const character = new Character(scene);
   await character.init(new THREE.Vector3(0, 0, 2));
   camera.setTarget(character.object);
   camera.handleResize();
 
+  // tap-to-move (8-way A* handled in pathfinder)
   const movement = new CharacterMovement(
-    viewport.domElement, { scene }, camera, character, world.getLandscapeProxy(), world
+    viewport.domElement,
+    { scene },
+    camera,
+    character,
+    world.getLandscapeProxy(),
+    world
   );
 
-  // Dev tools (grid toggle)
-  const devtools = new DevTools(scene, world, viewport.domElement);
-  devtools.build(); // initial build
+  // dev tools (grid toggle button)
+  const devtools = new DevTools(scene, world, document.getElementById('game-root') || document.body);
+  devtools.build();
 
+  // LOD updates
   const step = () => {
     if (character.object) world.update(character.object.position);
     requestAnimationFrame(step);
   };
   requestAnimationFrame(step);
 
+  // resize
   window.addEventListener('resize', () => camera.handleResize(), { passive: true });
-  window.Dustborne = Object.assign(window.Dustborne || {}, { world, movement, devtools });
-  console.log('WorldEngine ready: 50×50 @1, 20×20 dirt, 6 spaced rocks, 8-way A*.');
+
+  // expose for console
+  window.Dustborne = Object.assign(window.Dustborne || {}, { world, movement, devtools, scene, camera, viewport });
+  console.log('WorldEngine: 50×50 @1, 20×20 dirt, 6 spaced rocks, 8-way pathfinding, dev grid toggle.');
 }
