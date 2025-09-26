@@ -1,10 +1,7 @@
 // file: src/world/chunks/miningarea.js
-
 import * as THREE from 'three';
+import Viewport from '../../core/viewport.js';
 
-/**
- * Retained for future 3D use; not mounted yet (no camera/player logic).
- */
 export default class MiningArea {
   constructor() {
     this.mesh = new THREE.Group();
@@ -25,15 +22,9 @@ export default class MiningArea {
     this.mesh.add(innerMesh);
   }
 
-  update(time) {
-    // Reserved for future chunk updates.
-  }
+  update(time) { /* reserved */ }
 }
 
-/**
- * Minimal on-screen placeholder (no camera, no player).
- * Lets the user see that "Mining Area" is the active area after Start.
- */
 export function show({ rootId = 'game-root' } = {}) {
   let root = document.getElementById(rootId);
   if (!root) {
@@ -42,28 +33,23 @@ export function show({ rootId = 'game-root' } = {}) {
     document.body.appendChild(root);
   }
 
-  const css = `
-    #${rootId} {
-      position: fixed; inset: 0; display: grid; place-items: center;
-      background:
-        radial-gradient(900px 600px at 60% 70%, rgba(139,69,19,0.15), transparent 60%),
-        #000;
-      color: #f5eeda; font-family: Inter, system-ui, sans-serif;
-    }
-    .ma-wrap { display:flex; flex-direction:column; align-items:center; gap:6px; }
-    .ma-title { text-transform: uppercase; letter-spacing: 2px; font-size: 22px; }
-    .ma-sub { font-size: 12px; color: #c3b8a5; opacity:.85; }
-  `;
-  const style = document.createElement('style');
-  style.textContent = css;
-  document.head.appendChild(style);
+  // 1) Bring up the Viewport (no camera or lights here)
+  const viewport = new Viewport({ root });
+  viewport.setClearColor(0x000000, 1);
 
-  root.innerHTML = `
-    <div class="ma-wrap" data-chunk="miningarea">
-      <div class="ma-title">Mining Area</div>
-      <div class="ma-sub">placeholder — no camera/player yet</div>
-    </div>
-  `;
+  // 2) Scene + environment content (no camera/lighting/player)
+  const scene = new THREE.Scene();
+  const area = new MiningArea();
+  scene.add(area.mesh);
 
-  console.log('MiningArea.show(): placeholder mounted. Scene setup to follow later.');
+  // 3) Attach and run; will render once a camera is provided later
+  viewport.setScene(scene);
+  viewport.start();
+
+  // Expose minimal handle for future wiring (optional)
+  window.Dustborne = Object.assign(window.Dustborne || {}, {
+    viewport, scene, area
+  });
+
+  console.log('MiningArea.show(): Viewport mounted; scene ready. Waiting for camera.');
 }
