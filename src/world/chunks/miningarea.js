@@ -5,10 +5,9 @@ import { spawnSingleRock } from '../assets/rocks/copperore.js';
 export default class MiningArea {}
 
 /**
- * Mining chunk content:
- * - Mark central 20×20 as dirt
- * - Place exactly 6 rocks with a 1-tile gap in all directions (no touching, incl. diagonals)
- * - Rock tiles are unwalkable for pathfinding
+ * Central 20×20 dirt; place exactly 6 rocks:
+ * - Chebyshev spacing >= 2 (at least 1 empty tile between any two, incl. diagonals)
+ * - Farthest-first selection to maximize spread
  */
 export function register(world) {
   world.registerKindSpawner('mining', async ({ scene, cx, cz, world }) => {
@@ -16,8 +15,8 @@ export function register(world) {
     const start = Math.floor((TP - 20) / 2); // 15
     const end   = start + 20;                // 35 (exclusive)
 
-    // Collect tiles in this chunk and flag dirt area
-    const centralTiles = [];
+    // Collect central tiles and flag as dirt
+    const central = [];
     for (let tz = 0; tz < TP; tz++) {
       for (let tx = 0; tx < TP; tx++) {
         const gX = cx * TP + tx;
@@ -26,39 +25,50 @@ export function register(world) {
         if (!tile) continue;
         if (tx >= start && tx < end && tz >= start && tz < end) {
           tile.userData.isDirt = true;
-          centralTiles.push(tile);
+          central.push(tile);
         }
       }
     }
 
-    // Pick 6 non-touching tiles (Chebyshev distance >= 2)
-    const candidates = centralTiles.slice();
-    // Shuffle for randomness
-    for (let i = candidates.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
-    }
+    // Farthest-first (k-center) with Chebyshev metric, enforcing minDist >= 2
+    const cheb = (a, b) => Math.max(Math.abs(a.gridX - b.gridX), Math.abs(a.gridZ - b.gridZ));
+    const K = 6, minDist = 2;
+    const chosen = [];
 
-    const rockTiles = [];
-    while (candidates.length && rockTiles.length < 6) {
-      const chosen = candidates.pop();
-      rockTiles.push(chosen);
+    // seed: pick one near a corner of the patch for spread
+    const seeds = [
+      central.find(t => t.tx === start && t.tz === start),
+      central.find(t => t.tx === end-1 && t.tz === start),
+      central.find(t => t.tx === start && t.tz === end-1),
+      central.find(t => t.tx === end-1 && t.tz === end-1)
+    ].filter(Boolean);
+    if (seeds.length) chosen.push(seeds[Math.floor(Math.random()*seeds.length)]);
+    else chosen.push(central[Math.floor(Math.random()*central.length)]);
 
-      // Remove any candidate within 1 tile in any direction (no touching incl. diagonals)
-      for (let i = candidates.length - 1; i >= 0; i--) {
-        const t = candidates[i];
-        const dx = Math.abs(t.gridX - chosen.gridX);
-        const dz = Math.abs(t.gridZ - chosen.gridZ);
-        if (dx <= 1 && dz <= 1) candidates.splice(i, 1);
+    while (chosen.length < K) {
+      let best = null, bestScore = -1;
+      for (const c of central) {
+        if (chosen.includes(c)) continue;
+        const d = chosen.reduce((m, t) => Math.min(m, cheb(c, t)), Infinity);
+        // hard constraint: need >= minDist, otherwise skip
+        if (d < minDist) continue;
+        if (d > bestScore) { bestScore = d; best = c; }
       }
+      if (!best) {
+        // If constraint too tight (shouldn't happen for 20×20 & K=6), relax slightly:
+        for (const c of central) {
+          if (chosen.includes(c)) continue;
+          const d = chosen.reduce((m, t) => Math.min(m, cheb(c, t)), Infinity);
+          if (d > bestScore) { bestScore = d; best = c; }
+        }
+      }
+      if (!best) break;
+      chosen.push(best);
     }
 
-    // Safety: ensure we got 6
-    if (rockTiles.length !== 6) {
-      console.warn(`[MiningArea] Only placed ${rockTiles.length}/6 rocks; central area too constrained?`);
-    }
+    const rockTiles = chosen.slice(0, K);
 
-    // Mark blocked + spawn
+    // Mark as blocked and spawn
     for (const t of rockTiles) {
       t.isWalkable = false;
       await spawnSingleRock(scene, { center: t.center, tile: t });
