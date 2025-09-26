@@ -1,6 +1,7 @@
 // file: src/world/chunks/miningarea.js
 import * as THREE from 'three';
-import { spawnCluster as spawnCopperCluster } from '../../assets/rocks/copperore.js';
+// The import path below is now corrected
+import { spawnCluster as spawnCopperCluster } from '../assets/rocks/copperore.js';
 
 // Landscape descriptor only
 export default class MiningArea {
