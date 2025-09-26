@@ -24,8 +24,8 @@ export default class CharacterMovement {
     this._mixer = null;
     this._walkAction = null;
     this._idleAction = null;
-    this._isWalking = false;
-    this._isIdling = false;
+    this._walkPlaying = false;
+    this._idlePlaying = false;
 
     this._onStart = this.onTouchStart.bind(this);
     this._onMove  = this.onTouchMove.bind(this);
@@ -58,15 +58,20 @@ export default class CharacterMovement {
         if (this._currentWaypointIndex < this._path.length) {
           this.player.moveTo(this._path[this._currentWaypointIndex]);
         } else {
+          // path complete
           this._path = null;
+          this.player.cancelActions();
+          this._stopWalk();
+          this._startIdle();
         }
       }
+    } else {
+      // no path; ensure idle is playing
+      if (!this.player.isMoving()) {
+        if (this._walkPlaying) this._stopWalk();
+        if (!this._idlePlaying) this._startIdle();
+      }
     }
-
-    const walking = this._path !== null;
-    if (walking && !this._isWalking) this._startWalk();
-    if (!walking && this._isWalking) { this._stopWalk(); this._startIdle(); }
-    if (!walking && !this._isIdling) this._startIdle();
 
     requestAnimationFrame(this.tick.bind(this));
   }
@@ -105,33 +110,28 @@ export default class CharacterMovement {
     );
 
     this.raycaster.setFromCamera(tapNDC, this.camera.threeCamera);
-    const intersects = this.raycaster.intersectObjects(this.game.scene.children, true);
+    const hits = this.raycaster.intersectObjects(this.game.scene.children, true);
 
     let landscapeHit = null;
-    for (const hit of intersects) {
+    for (const hit of hits) {
       if (hit.object?.userData?.isMineable) {
-        // Path to an adjacent walkable tile next to the rock
+        // Path to closest adjacent walkable tile (8-way grid)
         const rockPos = hit.object.getWorldPosition(new THREE.Vector3());
         const rockTile = this.world.getTileAt(rockPos);
         if (!rockTile) return;
 
-        const neighbors = this.world.getNeighbors(rockTile).filter(t => t.isWalkable);
-        if (!neighbors.length) return;
+        const adj = this.world.getNeighbors8(rockTile).filter(t => t.isWalkable);
+        if (!adj.length) return;
 
-        const startTile = this.world.getTileAt(this.player.object.position) ?? neighbors[0];
-        const best = neighbors.reduce((a,b) => {
-          const da = Math.abs(a.gridX - startTile.gridX) + Math.abs(a.gridZ - startTile.gridZ);
-          const db = Math.abs(b.gridX - startTile.gridX) + Math.abs(b.gridZ - startTile.gridZ);
+        const startTile = this.world.getTileAt(this.player.object.position) ?? adj[0];
+        // choose by octile distance
+        const best = adj.reduce((a,b) => {
+          const da = Math.max(Math.abs(a.gridX - startTile.gridX), Math.abs(a.gridZ - startTile.gridZ));
+          const db = Math.max(Math.abs(b.gridX - startTile.gridX), Math.abs(b.gridZ - startTile.gridZ));
           return db < da ? b : a;
         });
 
-        const path = this.pathfinder.findPath(this.player.object.position, best.center);
-        if (path && path.length) {
-          this.player.showTapMarkerAt?.(best.center);
-          this._path = path;
-          this._currentWaypointIndex = 0;
-          this.player.moveTo(this._path[0]);
-        }
+        this._goTo(best.center);
         return;
       }
       if (this.landscape?.mesh?.children?.includes(hit.object)) {
@@ -145,23 +145,29 @@ export default class CharacterMovement {
     const endTile = this.world.getTileAt(landscapeHit.point);
     if (!endTile || !endTile.isWalkable) return;
 
-    const path = this.pathfinder.findPath(this.player.object.position, endTile.center);
+    this._goTo(endTile.center);
+  }
+
+  _goTo(targetCenter) {
+    const path = this.pathfinder.findPath(this.player.object.position, targetCenter);
     if (path && path.length) {
-      this.player.showTapMarkerAt?.(endTile.center);
+      this.player.showTapMarkerAt?.(targetCenter);
       this._path = path;
       this._currentWaypointIndex = 0;
       this.player.moveTo(this._path[0]);
+      // ensure walking starts immediately
+      this._stopIdle();
+      this._startWalk();
     }
   }
 
-  // --- animation helpers ---
+  // --- animation helpers (track our own playing flags) ---
   async _ensureMixer() {
     if (!this._mixer && this.player?.object) {
       this._mixer = new THREE.AnimationMixer(this.player.object);
     }
     return this._mixer;
   }
-
   async _loadClip(url) {
     const gltf = await new GLTFLoader().loadAsync(url);
     const clip = gltf.animations?.[0];
@@ -177,13 +183,15 @@ export default class CharacterMovement {
       this._idleAction.setLoop(THREE.LoopRepeat);
       this._idleAction.enabled = true;
     }
-    if (!this._idleAction.isRunning()) this._idleAction.play();
-    if (this._walkAction) this._walkAction.crossFadeTo(this._idleAction, 0.2, false);
-    this._isIdling = true;
+    if (!this._idlePlaying) {
+      if (this._walkAction && this._walkPlaying) this._walkAction.crossFadeTo(this._idleAction, 0.2, false);
+      this._idleAction.reset().play();
+      this._idlePlaying = true;
+    }
   }
   _stopIdle() {
-    if (this._idleAction) this._idleAction.stop();
-    this._isIdling = false;
+    if (this._idleAction && this._idlePlaying) this._idleAction.stop();
+    this._idlePlaying = false;
   }
 
   async _startWalk() {
@@ -194,13 +202,15 @@ export default class CharacterMovement {
       this._walkAction.setLoop(THREE.LoopRepeat);
       this._walkAction.enabled = true;
     }
-    if (!this._walkAction.isRunning()) this._walkAction.play();
-    if (this._idleAction) this._idleAction.crossFadeTo(this._walkAction, 0.15, false);
-    this._isWalking = true;
-    this._isIdling = false;
+    if (!this._walkPlaying) {
+      if (this._idleAction && this._idlePlaying) this._idleAction.crossFadeTo(this._walkAction, 0.15, false);
+      this._walkAction.reset().play();
+      this._walkPlaying = true;
+      this._idlePlaying = false;
+    }
   }
   _stopWalk() {
-    if (this._walkAction) this._walkAction.stop();
-    this._isWalking = false;
+    if (this._walkAction && this._walkPlaying) this._walkAction.stop();
+    this._walkPlaying = false;
   }
 }
