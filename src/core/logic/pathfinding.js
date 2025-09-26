@@ -1,106 +1,114 @@
 // file: src/core/logic/pathfinding.js
 
-/**
- * A simple Priority Queue implementation for the A* algorithm.
- */
 class PriorityQueue {
-  constructor() {
-    this.elements = [];
-  }
-
+  constructor() { this.elements = []; }
   enqueue(element, priority) {
     this.elements.push({ element, priority });
     this.elements.sort((a, b) => a.priority - b.priority);
   }
-
-  dequeue() {
-    return this.elements.shift().element;
-  }
-
-  isEmpty() {
-    return this.elements.length === 0;
-  }
+  dequeue() { return this.elements.shift().element; }
+  isEmpty() { return this.elements.length === 0; }
 }
 
 /**
- * Implements the A* pathfinding algorithm on the world's tile grid.
+ * A* over the world's tile grid.
+ * - 8-way movement (N,S,E,W + diagonals)
+ * - Octile heuristic
+ * - Diagonal moves disallowed if it would "cut a corner" between two blocked tiles.
  */
 export class AStarPathfinder {
   constructor(world) {
     this.world = world;
+    this._map = world._tileMap; // grid key: `${gridX},${gridZ}` -> tile
+    this._TP = world.TILES_PER_CHUNK;
   }
 
-  /**
-   * Calculates the Manhattan distance heuristic between two tiles.
-   * @param {object} a - The first tile.
-   * @param {object} b - The second tile.
-   * @returns {number} The heuristic distance.
-   */
+  _key(x, z) { return `${x},${z}`; }
+
+  _neighbors8(tile) {
+    const res = [];
+    const { gridX:x, gridZ:z } = tile;
+    const dirs = [
+      [ 1,  0], [-1,  0], [ 0,  1], [ 0, -1], // cardinal
+      [ 1,  1], [ 1, -1], [-1,  1], [-1, -1] // diagonals
+    ];
+
+    for (const [dx, dz] of dirs) {
+      const nx = x + dx, nz = z + dz;
+      const n = this._map.get(this._key(nx, nz));
+      if (!n || !n.isWalkable) continue;
+
+      // Block diagonal "corner cutting": both adjacent cardinals must be walkable
+      if (dx !== 0 && dz !== 0) {
+        const sideA = this._map.get(this._key(x + dx, z));
+        const sideB = this._map.get(this._key(x, z + dz));
+        if (!sideA?.isWalkable || !sideB?.isWalkable) continue;
+      }
+      res.push(n);
+    }
+    return res;
+  }
+
+  _cost(a, b) {
+    const dx = Math.abs(a.gridX - b.gridX);
+    const dz = Math.abs(a.gridZ - b.gridZ);
+    // diagonal costs √2, straight costs 1
+    return (dx === 1 && dz === 1) ? Math.SQRT2 : 1;
+  }
+
   _heuristic(a, b) {
-    return Math.abs(a.gridX - b.gridX) + Math.abs(a.gridZ - b.gridZ);
+    // Octile heuristic for 8-direction grids
+    const dx = Math.abs(a.gridX - b.gridX);
+    const dz = Math.abs(a.gridZ - b.gridZ);
+    const D = 1, D2 = Math.SQRT2;
+    return D * (dx + dz) + (D2 - 2 * D) * Math.min(dx, dz);
   }
 
-  /**
-   * Finds the shortest path between two positions on the world grid.
-   * @param {THREE.Vector3} startPos - The starting world position.
-   * @param {THREE.Vector3} endPos - The ending world position.
-   * @returns {THREE.Vector3[] | null} An array of world-space waypoints, or null if no path is found.
-   */
   findPath(startPos, endPos) {
     const startTile = this.world.getTileAt(startPos);
-    const endTile = this.world.getTileAt(endPos);
-
-    if (!startTile || !endTile || !endTile.isWalkable) {
-      return null; // No path if start/end is invalid or end is blocked
-    }
+    const endTile   = this.world.getTileAt(endPos);
+    if (!startTile || !endTile || !endTile.isWalkable) return null;
 
     const frontier = new PriorityQueue();
     frontier.enqueue(startTile, 0);
 
     const cameFrom = new Map();
     const costSoFar = new Map();
-    cameFrom.set(startTile, null);
-    costSoFar.set(startTile, 0);
+    const keyOf = t => `${t.gridX},${t.gridZ}`;
+
+    cameFrom.set(keyOf(startTile), null);
+    costSoFar.set(keyOf(startTile), 0);
 
     while (!frontier.isEmpty()) {
       const current = frontier.dequeue();
+      const cKey = keyOf(current);
 
-      if (current === endTile) {
-        break; // Path found
-      }
+      if (current === endTile) break;
 
-      for (const next of this.world.getNeighbors(current)) {
-        if (!next.isWalkable) continue;
-
-        const newCost = costSoFar.get(current) + 1; // All steps have a cost of 1
-        if (!costSoFar.has(next) || newCost < costSoFar.get(next)) {
-          costSoFar.set(next, newCost);
-          const priority = newCost + this._heuristic(endTile, next);
+      for (const next of this._neighbors8(current)) {
+        const nKey = keyOf(next);
+        const newCost = costSoFar.get(cKey) + this._cost(current, next);
+        if (!costSoFar.has(nKey) || newCost < costSoFar.get(nKey)) {
+          costSoFar.set(nKey, newCost);
+          const priority = newCost + this._heuristic(next, endTile);
           frontier.enqueue(next, priority);
-          cameFrom.set(next, current);
+          cameFrom.set(nKey, current);
         }
       }
     }
 
-    // Reconstruct the path from the end tile backwards
-    let current = endTile;
-    const path = [];
-    if (!cameFrom.has(current)) {
-      return null; // No path found
-    }
-    
-    while (current !== startTile) {
-      path.push(current.center.clone());
-      current = cameFrom.get(current);
-    }
-    path.reverse(); // The path is backwards, so reverse it
+    // Reconstruct
+    const endKey = keyOf(endTile);
+    if (!cameFrom.has(endKey)) return null;
 
-    // If the path is empty, it means the start and end are the same or adjacent.
-    // Ensure there's at least one point to move to.
-    if (path.length === 0) {
-      path.push(endTile.center.clone());
+    let cur = endTile;
+    const path = [];
+    while (cur && cur !== startTile) {
+      path.push(cur.center.clone());
+      cur = cameFrom.get(keyOf(cur));
     }
-    
+    path.reverse();
+    if (path.length === 0) path.push(endTile.center.clone());
     return path;
   }
 }
