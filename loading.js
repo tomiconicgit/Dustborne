@@ -119,12 +119,14 @@ class LoadingManager {
     (console[consoleLevel] || console.log).call(console, `[LoadingManager] ${message}`);
   }
 
+
+
   fail(error, task) {
     if (this.hasFailed) return;
     this.hasFailed = true;
 
     const msg = error?.message || 'Unknown error';
-    this.log(`✖ FATAL during [${task?.name || 'unknown'}]: ${msg}`, 'error');
+    this.log(`❌ FATAL during [${task?.name || 'unknown'}]: ${msg}`, 'error');
     console.error('[LoadingManager] Failure context:', { task, error });
 
     this.statusElement.textContent = 'Fatal Error'; // hidden but kept for code simplicity
@@ -197,10 +199,9 @@ class LoadingManager {
     const wrap = document.createElement('div');
     wrap.id = 'dustborne-loading-screen';
     wrap.innerHTML = `
-      <h1 class="db-brand" aria-label="Dustborne">Dustborne</h1>
-
       <div class="db-center">
-        <!-- status kept for accessibility / code simplicity (hidden) -->
+        <h1 class="db-brand" aria-label="Dustborne">Dustborne</h1>
+      
         <span id="dustborne-loading-status" class="sr-only">Initializing…</span>
 
         <div id="dustborne-loading-bar-container" class="db-bar-outer"
@@ -210,16 +211,13 @@ class LoadingManager {
           <div id="dustborne-bar-label" class="db-bar-label">0%</div>
         </div>
 
-        <!-- Controls row has fixed height from start to avoid layout shift -->
         <div class="db-controls" aria-live="polite">
           <button id="dustborne-start-button" class="db-btn db-btn-primary" disabled aria-disabled="true">Start Game</button>
           <button id="dustborne-copy-errors-btn" class="db-btn db-btn-ghost" aria-label="Copy errors">Copy Errors</button>
         </div>
       </div>
 
-      <!-- Floating debugger card at bottom -->
-      <div class="db-debug-card" role="region" aria-label="Debugger">
-        <div class="db-debug-header">Debugger</div>
+      <div class="db-debug-card" role="region" aria-label="Log">
         <div id="dustborne-log-container" class="db-log"></div>
       </div>
     `;
@@ -235,16 +233,21 @@ class LoadingManager {
       }
 
       :root {
-        --db-bg: #0a0c10;
-        --db-text: #e6e9ef;
-        --db-subtle: #a1a8b3;
-        --db-stroke: rgba(255,255,255,0.08);
+        /* Sandy/Brown Theme */
+        --db-bg: #1a1612; /* Dark brown */
+        --db-text: #f5eeda; /* Warm off-white */
+        --db-subtle: #c3b8a5; /* Muted sand */
+        --db-stroke: rgba(245, 238, 218, 0.1); /* Warm stroke */
+        
+        /* Standard Green & Red */
+        --db-green: #28a745;
+        --db-green-glow: rgba(40, 167, 69, 0.45);
+        --db-red: #dc3545;
+        --db-red-glow: rgba(220, 53, 69, 0.45);
+        
+        /* Original blue for progress bar before completion */
         --db-blue: #42a5ff;
         --db-blue-glow: rgba(66,165,255,0.45);
-        --db-green: #25c46a;
-        --db-green-glow: rgba(37,196,106,0.45);
-        --db-red: #ff4d4d;
-        --db-red-glow: rgba(255,77,77,0.45);
       }
 
       .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
@@ -252,8 +255,8 @@ class LoadingManager {
       #dustborne-loading-screen {
         position: fixed; inset: 0; z-index: 10000;
         display: flex; flex-direction: column; align-items: center;
-        background: radial-gradient(1200px 800px at 20% 10%, rgba(66,165,255,0.08), transparent 60%),
-                    radial-gradient(900px 600px at 80% 90%, rgba(37,196,106,0.08), transparent 55%),
+        background: radial-gradient(1200px 800px at 20% 10%, rgba(210, 180, 140, 0.12), transparent 60%),
+                    radial-gradient(900px 600px at 80% 90%, rgba(139, 69, 19, 0.1), transparent 55%),
                     var(--db-bg);
         color: var(--db-text);
         font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
@@ -265,8 +268,9 @@ class LoadingManager {
       .db-brand {
         font-family: 'Druk Wide', Impact, 'Arial Black', system-ui, sans-serif;
         font-weight: 700; text-transform: uppercase; letter-spacing: 2px;
-        margin: 12px 0 10px; font-size: clamp(28px, 8vw, 72px); line-height: 1;
-        background: linear-gradient(180deg, #f0f0f0 0%, #a8a8a8 25%, #6a6a6a 50%, #a8a8a8 75%, #f0f0f0 100%);
+        margin: 12px 0 20px;
+        font-size: clamp(28px, 8vw, 72px); line-height: 1;
+        background: linear-gradient(180deg, #fdf5e6 0%, #e8d7ab 50%, #d4b97a 100%);
         -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
         text-shadow: 0 2px 0 rgba(0,0,0,0.35), 0 12px 28px rgba(0,0,0,0.35);
       }
@@ -275,6 +279,7 @@ class LoadingManager {
         flex: 1; width: 100%;
         display: flex; flex-direction: column; align-items: center; justify-content: center;
         gap: 14px;
+        margin-top: -5vh; /* Nudge layout up slightly */
       }
 
       .db-bar-outer {
@@ -296,11 +301,11 @@ class LoadingManager {
         transform: translateZ(0);
       }
       .db-bar-fill.complete {
-        background: linear-gradient(90deg, var(--db-green), #7de3a7);
+        background: linear-gradient(90deg, var(--db-green), #5cb85c);
         box-shadow: 0 0 14px var(--db-green-glow);
       }
       .db-bar-fill.error {
-        background: linear-gradient(90deg, var(--db-red), #ff8a8a);
+        background: linear-gradient(90deg, var(--db-red), #e4606d);
         box-shadow: 0 0 14px var(--db-red-glow);
       }
       .db-bar-label {
@@ -330,14 +335,17 @@ class LoadingManager {
       .db-btn.show { opacity: 1; visibility: visible; pointer-events: auto; }
       .db-btn:active { transform: translateY(1px); }
 
-      .db-btn-primary[disabled], .db-btn-primary[aria-disabled="true"] { opacity: .55; }
+      .db-btn-primary[disabled], .db-btn-primary[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
       .db-btn-primary {
-        color: #0b1220;
-        background: linear-gradient(180deg, #8ec9ff, #5bb2ff);
-        box-shadow: 0 8px 24px rgba(66,165,255,0.32), inset 0 1px 0 rgba(255,255,255,0.5);
-        border: 1px solid rgba(255,255,255,0.4);
+        color: #1a1612;
+        background: linear-gradient(180deg, #ffffff, #e0e0e0);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255,255,255,0.8);
+        border: 1px solid rgba(0, 0, 0, 0.15);
       }
-      .db-btn-primary:hover { box-shadow: 0 8px 32px rgba(66,165,255,0.45), inset 0 1px 0 rgba(255,255,255,0.6); }
+      .db-btn-primary:not([disabled]):hover { 
+        background: linear-gradient(180deg, #ffffff, #efefef);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255,255,255,0.9);
+      }
 
       .db-btn-ghost {
         color: var(--db-text);
@@ -353,18 +361,13 @@ class LoadingManager {
         position: fixed; left: 50%; transform: translateX(-50%);
         bottom: 16px;
         width: min(92vw, 760px);
-        background: rgba(16,18,24,0.6);
+        background: rgba(26, 22, 18, 0.7);
         backdrop-filter: blur(14px) saturate(1.2);
         -webkit-backdrop-filter: blur(14px) saturate(1.2);
         border: 1px solid var(--db-stroke);
         border-radius: 14px;
         box-shadow: 0 14px 40px rgba(0,0,0,.45);
         overflow: hidden;
-      }
-      .db-debug-header {
-        padding: 10px 12px;
-        font-size: 12px; font-weight: 700; color: var(--db-subtle);
-        border-bottom: 1px solid var(--db-stroke);
       }
       .db-log {
         max-height: 28vh; min-height: 120px;
@@ -373,11 +376,11 @@ class LoadingManager {
         scrollbar-width: thin;
       }
       .db-log p { margin: 0; padding: 2px 0; white-space: pre-wrap; display: flex; gap: 8px; }
-      .log-timestamp { color: #6f7682; flex-shrink: 0; }
-      .log-info { color: #9acbff; }
-      .log-success { color: #8ff2b3; }
+      .log-timestamp { color: var(--db-subtle); flex-shrink: 0; }
+      .log-info { color: #e6c891; }
+      .log-success { color: var(--db-green); }
       .log-warn { color: #ffd46b; }
-      .log-error { color: #ff8484; font-weight: 600; }
+      .log-error { color: var(--db-red); font-weight: 600; }
     `;
     const style = document.createElement('style');
     style.type = 'text/css';
@@ -386,5 +389,5 @@ class LoadingManager {
   }
 }
 
-const loadingManager = new LoadingManager();
+const loadingManager = new new LoadingManager();
 export default loadingManager;
