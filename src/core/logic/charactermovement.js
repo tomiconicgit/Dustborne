@@ -5,8 +5,8 @@ import { AStarPathfinder } from './pathfinding.js';
 
 export default class CharacterMovement {
   constructor({ camera, player, world }) {
-    this.domElement = null; // Will be set later
-    this.game = { scene: player.scene }; // Get scene from player
+    this.domElement = null;
+    this.game = { scene: player.scene };
     this.camera = camera;
     this.player = player;
     this.world = world;
@@ -27,7 +27,7 @@ export default class CharacterMovement {
     this._idlePlaying = false;
     this._prewarmed = false;
 
-    this._running = false; // Will be started by startTick()
+    this._running = false;
     this._lastT = 0;
   }
   
@@ -53,29 +53,35 @@ export default class CharacterMovement {
     const dt = Math.min(0.05, (t - this._lastT) / 1000);
     this._lastT = t;
     
-    // --- UPDATE ORDER IS CRITICAL ---
-    // 1. First, update the character's physical position and camera.
     this.player?.update(dt);
     this.camera?.update();
 
-    // 2. Next, check the player's state and command animation changes.
+    // --- LOGIC FIX STARTS HERE ---
+    // This logic ensures we only check for idling if there's no active path.
     if (this._path) {
+      // If we have a path and we've stopped, it means we reached a waypoint.
       if (!this.player.isMoving()) {
         this._currentWaypointIndex++;
+        // Check if there are more waypoints in the path.
         if (this._currentWaypointIndex < this._path.length) {
+          // If yes, simply move to the next one. Do NOT change animation state.
           this.player.moveTo(this._path[this._currentWaypointIndex]);
         } else {
+          // If no, the path is complete. Clear the path and command the idle animation.
           this._path = null;
           this.player.cancelActions();
           this._startIdle().catch((err) => console.error('Failed to start idle:', err));
         }
       }
     } else if (!this.player.isMoving()) {
-      if (!this._idlePlaying) this._startIdle().catch((err) => console.error('Failed to start idle:', err));
+      // This block now ONLY runs if there is NO path and the player is not moving.
+      // This is the correct condition to start the idle animation.
+      if (!this._idlePlaying) {
+        this._startIdle().catch((err) => console.error('Failed to start idle:', err));
+      }
     }
+    // --- LOGIC FIX ENDS HERE ---
 
-    // 3. Finally, update the animation mixer AFTER commands have been issued.
-    // This ensures state changes are processed in the same frame.
     if (this._mixer) this._mixer.update(dt);
 
     requestAnimationFrame(this.tick.bind(this));
@@ -135,6 +141,7 @@ export default class CharacterMovement {
       this._currentWaypointIndex = 0;
       this.player.moveTo(this._path[0]);
 
+      // This is only called ONCE at the start of a new path.
       this._startWalk().catch((err) => console.error('Failed to start walk:', err));
     }
   }
@@ -188,11 +195,11 @@ export default class CharacterMovement {
     if (!this._idleAction) await this._ensureIdle();
     
     if (this._walkAction && this._walkPlaying) {
-      this._idleAction.reset().crossFadeFrom(this._walkAction, 0.18, false);
+      this._idleAction.reset().crossFadeFrom(this._walkAction, 0.25, false);
       this._walkPlaying = false;
     } else if (!this._idlePlaying) {
       this._idleAction.play();
-      this._idleAction.fadeIn(0.18);
+      this._idleAction.fadeIn(0.25);
     }
     this._idlePlaying = true;
   }
@@ -201,11 +208,11 @@ export default class CharacterMovement {
     if (!this._walkAction) await this._ensureWalk();
 
     if (this._idleAction && this._idlePlaying) {
-      this._walkAction.reset().crossFadeFrom(this._idleAction, 0.18, false);
+      this._walkAction.reset().crossFadeFrom(this._idleAction, 0.25, false);
       this._idlePlaying = false;
     } else if (!this._walkPlaying) {
       this._walkAction.play();
-      this._walkAction.fadeIn(0.18);
+      this._walkAction.fadeIn(0.25);
     }
     this._walkPlaying = true;
   }
