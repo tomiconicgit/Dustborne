@@ -56,7 +56,6 @@ export default class CharacterMovement {
     this.player?.update(dt);
     this.camera?.update();
 
-    // --- LOGIC FIX STARTS HERE ---
     // This logic ensures we only check for idling if there's no active path.
     if (this._path) {
       // If we have a path and we've stopped, it means we reached a waypoint.
@@ -75,13 +74,12 @@ export default class CharacterMovement {
       }
     } else if (!this.player.isMoving()) {
       // This block now ONLY runs if there is NO path and the player is not moving.
-      // This is the correct condition to start the idle animation.
       if (!this._idlePlaying) {
         this._startIdle().catch((err) => console.error('Failed to start idle:', err));
       }
     }
-    // --- LOGIC FIX ENDS HERE ---
 
+    // Update the animation mixer AFTER commands have been issued.
     if (this._mixer) this._mixer.update(dt);
 
     requestAnimationFrame(this.tick.bind(this));
@@ -141,7 +139,6 @@ export default class CharacterMovement {
       this._currentWaypointIndex = 0;
       this.player.moveTo(this._path[0]);
 
-      // This is only called ONCE at the start of a new path.
       this._startWalk().catch((err) => console.error('Failed to start walk:', err));
     }
   }
