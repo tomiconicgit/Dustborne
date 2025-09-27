@@ -5,7 +5,7 @@ import { scene } from '../../core/three.js';
 import Viewport from '../../core/viewport.js';
 import Camera from '../../core/camera.js';
 import ChunkManager from '../../world/chunks/chunkmanager.js';
-import GridToggle from '../../developer/gridtoggle.js'; // FIX: Import GridToggle to call its update method
+import GridToggle from '../../developer/gridtoggle.js';
 
 class PriorityQueue {
   constructor() { this.elements = []; }
@@ -32,10 +32,13 @@ class AStarPathfinder {
     let reached = false;
     while (!frontier.isEmpty()) {
       const current = frontier.dequeue();
-      if (current.localX === endTile.localX && current.localZ === endTile.localZ && current.chunkX === endTile.chunkX && current.chunkZ === endTile.chunkZ) {
+
+      // FIX: Compare tile coordinates/keys, not object references.
+      if (this._key(current) === this._key(endTile)) {
         reached = true;
         break;
       }
+
       for (const next of this.world.getNeighbors8(current)) {
         if (!next.isWalkable) continue;
         const newCost = costSoFar.get(this._key(current)) + this._cost(current, next);
@@ -150,7 +153,6 @@ export default class Character {
     ChunkManager.instance?.update(this.object.position, this.viewDistance);
     Camera.main?.update();
 
-    // FIX: Call the grid's update method every frame so it can follow the player
     GridToggle.main?.update(this.object.position);
   }
 
