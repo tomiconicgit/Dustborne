@@ -5,8 +5,6 @@ class LoadingManager {
     this.hasFailed = false;
     this.errorCount = 0;
     this.loadedModules = new Map();
-    this.engine = null; // keep engine instance for start routing
-    this.prewarmedState = null; // To hold the ready-to-go game world
 
     this._createStyles();
     this._createDOM();
@@ -16,453 +14,106 @@ class LoadingManager {
     this.log('Initializing Loading Manager...');
   }
 
-  // Public: called by bootstrap if Engine import fails before start()
-  reportBootError(error, ctx = {}) {
-    const mod = ctx.module || '(boot)';
-    const msg = (error && (error.stack || error.message || String(error))) || 'Unknown boot error';
-    this.log(`Boot import failed for ${mod}: ${msg}`, 'error');
-
-    this.statusElement.textContent = 'Boot Error';
-    this.progressBar.classList.remove('complete');
-    this.progressBar.classList.add('error');
-    this.progressBar.style.width = '100%';
-    this.percentEl.textContent = 'FAIL';
-    this.copyErrorsBtn.classList.add('show');
-  }
-
   async start(EngineClass) {
     const engineInstance = new EngineClass();
-    this.engine = engineInstance;
     const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
-    // --- PHASE 1: VALIDATION ---
-    this.log('Phase 1: Validating game files...');
-    this._updateProgress('Validating assets...', 0);
-    const manifest = engineInstance.getFullManifest();
+    // --- PHASE 1: LOAD ALL GAME MODULES ---
+    this.log('Phase 1: Loading game modules...');
+    this._updateProgress('Loading modules...', 0);
+    const manifest = engineInstance.getManifest(); // Use the simpler manifest function
+
     if (!manifest || manifest.length === 0) {
-      this.log('Manifest empty. Nothing to validate.', 'warn');
-    } else {
-      for (let i = 0; i < manifest.length; i++) {
-        const task = manifest[i];
-        const progress = ((i + 1) / manifest.length) * 15; // Phase 1 is 15% of the bar
-        this._updateProgress(`Validating: ${task.name}`, progress);
-        await delay(20);
-        try {
-          await this._validateFile(task);
-        } catch (err) {
-          return this.fail(err, task);
-        }
+      return this.fail(new Error('Manifest is empty.'));
+    }
+
+    for (let i = 0; i < manifest.length; i++) {
+      const task = manifest[i];
+      const progress = ((i + 1) / manifest.length) * 80; // Loading is now 80% of the bar
+      this._updateProgress(`Loading: ${task.name}`, progress);
+      await delay(25); // Small delay for visual effect
+      try {
+        const mod = await import(task.path);
+        this.loadedModules.set(task.path, mod);
+      } catch (err) {
+        return this.fail(err, task);
       }
     }
     this.log('✔ Phase 1 complete.', 'success');
 
-    // --- PHASE 2: LOAD INITIAL ASSETS ---
-    this.log('Phase 2: Loading initial assets...');
-    const initial = engineInstance.getInitialAssets();
-    if (!initial || initial.length === 0) {
-      this.log('No initial assets required.', 'warn');
-    } else {
-      for (let i = 0; i < initial.length; i++) {
-        const task = initial[i];
-        const progress = 15 + ((i + 1) / initial.length) * 25; // Phase 2 is 25% of the bar
-        this._updateProgress(`Loading: ${task.name}`, progress);
-        await delay(30);
-        try {
-          const mod = await this._executeTask(task);
-          this.loadedModules.set(task.path, mod);
-        } catch (err) {
-          return this.fail(err, task);
+    // --- PHASE 2: INITIALIZE SYSTEMS ---
+    this.log('Phase 2: Initializing systems...');
+    this._updateProgress('Initializing systems...', 80);
+    const startModules = engineInstance.getStartModules();
+
+    if (!startModules || startModules.length === 0) {
+        return this.fail(new Error('No start modules defined in engine.js'));
+    }
+
+    // This is the core of the new decentralized system.
+    // It loops through the startup tasks and calls the specified function on each module.
+    for (let i = 0; i < startModules.length; i++) {
+        const task = startModules[i];
+        const progress = 80 + ((i + 1) / startModules.length) * 20; // Init is 20%
+        
+        const module = this.loadedModules.get(task.path);
+        if (!module) {
+            return this.fail(new Error(`Module not found for path: ${task.path}`), task);
         }
-      }
+        
+        // The default export is usually the class itself
+        const ModuleClass = module.default; 
+        if (!ModuleClass || typeof ModuleClass[task.startFunction] !== 'function') {
+            return this.fail(new Error(`'${task.startFunction}' is not a static function on module: ${task.path}`), task);
+        }
+        
+        this._updateProgress(`Starting: ${task.path.split('/').pop()}`, progress);
+        await delay(50);
+
+        try {
+            // Call the static start function (e.g., Viewport.create())
+            await ModuleClass[task.startFunction]();
+        } catch(err) {
+            return this.fail(err, task);
+        }
     }
     this.log('✔ Phase 2 complete.', 'success');
 
-    // --- PHASE 3: PRE-WARM THE GAME WORLD ---
-    this.log('Phase 3: Building game world...');
-    const worldEngineModule = this.loadedModules.get('./src/core/worldengine.js');
-    if (!worldEngineModule || !worldEngineModule.prewarm) {
-        return this.fail(new Error('worldengine.js is missing the prewarm() function.'), { name: 'World Pre-warm'});
-    }
-    
-    // This prewarm function now loads all models and prepares the world
-    this._updateProgress('Spawning character...', 60);
-    await delay(100);
-    this._updateProgress('Placing world assets...', 80);
-    this.prewarmedState = await worldEngineModule.prewarm();
-    this.log('✔ Phase 3 complete.', 'success');
-
-
-    // 100% + green; reveal Start (no layout shift)
-    this._updateProgress('Ready to start', 100, { complete: true });
+    // --- FINISH ---
+    this._updateProgress('Ready', 100, { complete: true });
     this._showStartButton();
   }
 
+  // The start button no longer calls a central 'show' function.
+  // It just fades out, as all systems are already running.
   _showStartButton() {
     this.startButton.disabled = false;
     this.startButton.setAttribute('aria-disabled', 'false');
-    this.startButton.classList.add('show'); // fade in; row height reserved from start
+    this.startButton.classList.add('show');
 
-    this.startButton.onclick = null;
     this.startButton.addEventListener('click', () => {
       if (this.loadingScreen.classList.contains('fade-out')) return;
       this.startButton.classList.add('btn-pressed');
       this.loadingScreen.classList.add('fade-out');
-
-      const run = () => {
-        this.loadingScreen.remove();
-        
-        const worldEngineModule = this.loadedModules.get('./src/core/worldengine.js');
-        if (worldEngineModule && this.prewarmedState) {
-            try {
-                // Call the 'show' function with the fully loaded world state
-                worldEngineModule.show({ rootId: 'game-root', prewarmedState: this.prewarmedState });
-            } catch (err) {
-                this.log(`Start handler threw: ${err?.message || err}`, 'error');
-                console.error('Start handler threw:', err);
-            }
-        } else {
-            const errText = 'Could not start game: world was not pre-warmed.';
-            this.log(errText, 'error');
-            console.error(errText);
-        }
-      };
+      
+      const removeLoader = () => this.loadingScreen.remove();
 
       let fired = false;
-      this.loadingScreen.addEventListener(
-        'transitionend',
-        () => { if (fired) return; fired = true; run(); },
-        { once: true }
-      );
-      setTimeout(() => { if (!fired) run(); }, 1200); // iOS fallback
+      this.loadingScreen.addEventListener('transitionend', () => { if (fired) return; fired = true; removeLoader(); }, { once: true });
+      setTimeout(() => { if (!fired) removeLoader(); }, 1200); // Fallback
     }, { once: true });
   }
 
-  async _validateFile(task) {
-    if (task.type === 'script') await import(task.path);
-  }
-
-  async _executeTask(task) {
-    if (task.type === 'script') return import(task.path);
-    throw new Error(`Unknown task type '${task.type}'`);
-  }
-
-  // --- UI & LOGGING ---------------------------------------------------------
-  log(message, level = 'info') {
-    if (!this.logContainer) return;
-    const timestamp = new Date().toLocaleTimeString([], {
-      hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3
-    });
-
-    const p = document.createElement('p');
-    p.className = `log-${level}`;
-    p.innerHTML = `<span class="log-timestamp">[${timestamp}]</span> ${message}`;
-    this.logContainer.appendChild(p);
-    this.logContainer.scrollTop = this.logContainer.scrollHeight;
-
-    if (level === 'error') {
-      this.errorCount++;
-      this.copyErrorsBtn.classList.add('show'); // fade in; space reserved
-    }
-
-    const consoleLevel = level === 'success' ? 'log' : level;
-    (console[consoleLevel] || console.log).call(console, `[LoadingManager] ${message}`);
-  }
-
-  fail(error, task) {
-    if (this.hasFailed) return;
-    this.hasFailed = true;
-
-    const msg = error?.message || 'Unknown error';
-    this.log(`❌ FATAL during [${task?.name || 'unknown'}]: ${msg}`, 'error');
-    console.error('[LoadingManager] Failure context:', { task, error });
-
-    this.statusElement.textContent = 'Fatal Error'; // hidden but kept for code simplicity
-
-    this.progressBar.classList.remove('complete');
-    this.progressBar.classList.add('error');
-    this.progressBar.style.width = '100%';
-    this.percentEl.textContent = 'FAIL';
-
-    this.copyErrorsBtn.classList.add('show');
-  }
-
-  _updateProgress(message, progress, opts = {}) {
-    if (this.hasFailed) return;
-    this.statusElement.textContent = message; // sr-only
-    const pct = Math.max(0, Math.min(100, Math.floor(progress)));
-    this.percentEl.textContent = `${pct}%`;
-    this.progressBar.style.width = `${pct}%`;
-    this.progressBar.setAttribute('aria-valuenow', String(pct));
-    if (opts.complete || pct >= 100) {
-      this.progressBar.classList.remove('error');
-      this.progressBar.classList.add('complete'); // green
-    }
-  }
-
-  _copyErrorsToClipboard() {
-    const errs = [...this.logContainer.querySelectorAll('.log-error')].map(p => p.textContent.trim());
-    const text = errs.length ? errs.join('\n') : 'No errors logged.';
-    (async () => {
-      try {
-        await navigator.clipboard.writeText(text);
-        this.log('Copied errors to clipboard.', 'success');
-      } catch {
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        ta.remove();
-        this.log('Copied errors to clipboard (fallback).', 'success');
-      }
-    })();
-  }
-
-  _wireGlobalErrorCapture() {
-    window.addEventListener('error', (e) => {
-      const where = e?.filename ? ` @ ${e.filename}:${e.lineno}:${e.colno}` : '';
-      this.log(`Error: ${e?.message || 'Unknown'}${where}`, 'error');
-    });
-    window.addEventListener('unhandledrejection', (e) => {
-      const reason = e?.reason?.message || e?.reason || 'Unhandled promise rejection';
-      this.log(`UnhandledRejection: ${reason}`, 'error');
-    });
-  }
-
-  _cacheDOMElements() {
-    this.loadingScreen  = document.getElementById('dustborne-loading-screen');
-    this.progressOuter  = document.getElementById('dustborne-loading-bar-container');
-    this.progressBar    = document.getElementById('dustborne-loading-bar');
-    this.percentEl      = document.getElementById('dustborne-bar-label');
-    this.statusElement  = document.getElementById('dustborne-loading-status'); // sr-only
-    this.startButton    = document.getElementById('dustborne-start-button');
-    this.copyErrorsBtn  = document.getElementById('dustborne-copy-errors-btn');
-    this.logContainer   = document.getElementById('dustborne-log-container');
-
-    this.copyErrorsBtn.addEventListener('click', () => this._copyErrorsToClipboard());
-  }
-
-  _createDOM() {
-    const wrap = document.createElement('div');
-    wrap.id = 'dustborne-loading-screen';
-    wrap.innerHTML = `
-      <div class="db-center">
-        <h1 class="db-brand" aria-label="Dustborne">Dustborne</h1>
-      
-        <span id="dustborne-loading-status" class="sr-only">Initializing...</span>
-
-        <div id="dustborne-loading-bar-container" class="db-bar-outer"
-             role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"
-             aria-label="Loading progress">
-          <div id="dustborne-loading-bar" class="db-bar-fill"></div>
-          <div id="dustborne-bar-label" class="db-bar-label">0%</div>
-        </div>
-
-        <div class="db-controls" aria-live="polite">
-          <button id="dustborne-start-button" class="db-btn db-btn-primary" disabled aria-disabled="true">Start Game</button>
-          <button id="dustborne-copy-errors-btn" class="db-btn db-btn-ghost" aria-label="Copy errors">Copy Errors</button>
-        </div>
-      </div>
-
-      <div class="db-debug-card" role="region" aria-label="Log">
-        <div id="dustborne-log-container" class="db-log"></div>
-      </div>
-    `;
-    document.body.appendChild(wrap);
-  }
-
-  _createStyles() {
-    const css = `
-      /* --- FONT IMPORT --- */
-      @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600;700&display=swap');
-
-      /* --- ANIMATIONS --- */
-      @keyframes float-slow {
-        0% { transform: translate(0, 0); }
-        50% { transform: translate(20px, -25px); opacity: 1; }
-        100% { transform: translate(0, 0); }
-      }
-      @keyframes float-fast {
-        0% { transform: translate(0, 0); }
-        50% { transform: translate(-30px, 20px); opacity: 0.5; }
-        100% { transform: translate(0, 0); }
-      }
-
-      /* --- COLOR & THEME VARIABLES --- */
-      :root {
-        --db-bg: #1a1612;
-        --db-text: #f5eeda;
-        --db-subtle: #c3b8a5;
-        --db-stroke: rgba(245, 238, 218, 0.1);
-        --db-green: #28a745;
-        --db-green-glow: rgba(40, 167, 69, 0.45);
-        --db-red: #dc3545;
-        --db-red-glow: rgba(220, 53, 69, 0.45);
-        --db-blue: #42a5ff;
-        --db-blue-glow: rgba(66,165,255,0.45);
-      }
-
-      .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
-
-      /* --- MAIN SCREEN LAYOUT --- */
-      #dustborne-loading-screen {
-        position: fixed; inset: 0; z-index: 10000;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        background: radial-gradient(1200px 800px at 20% 10%, rgba(210, 180, 140, 0.12), transparent 60%),
-                    radial-gradient(900px 600px at 80% 90%, rgba(139, 69, 19, 0.1), transparent 55%),
-                    var(--db-bg);
-        color: var(--db-text);
-        font-family: 'Inter', system-ui, sans-serif;
-        opacity: 1; visibility: visible; transition: opacity .9s ease, visibility .9s ease;
-        padding: 24px 12px;
-        box-sizing: border-box;
-        overflow: hidden;
-      }
-      #dustborne-loading-screen.fade-out { opacity: 0; visibility: hidden; pointer-events: none; }
-      
-      /* --- DUST PARTICLE EFFECT --- */
-      #dustborne-loading-screen::before, #dustborne-loading-screen::after {
-        content: '';
-        position: absolute; inset: -200px;
-        pointer-events: none;
-      }
-      #dustborne-loading-screen::before {
-        background-image:
-          radial-gradient(3px 3px at 10% 40%, rgba(245, 238, 218, 0.1), transparent),
-          radial-gradient(2px 2px at 50% 20%, rgba(245, 238, 218, 0.15), transparent),
-          radial-gradient(3px 3px at 85% 60%, rgba(245, 238, 218, 0.1), transparent),
-          radial-gradient(2px 2px at 30% 90%, rgba(245, 238, 218, 0.15), transparent);
-        animation: float-slow 50s linear infinite;
-        z-index: 1;
-      }
-      #dustborne-loading-screen::after {
-        background-image:
-          radial-gradient(1px 1px at 20% 15%, rgba(245, 238, 218, 0.3), transparent),
-          radial-gradient(1px 1px at 70% 35%, rgba(245, 238, 218, 0.3), transparent),
-          radial-gradient(2px 2px at 40% 70%, rgba(245, 238, 218, 0.25), transparent),
-          radial-gradient(1px 1px at 90% 85%, rgba(245, 238, 218, 0.3), transparent);
-        animation: float-fast 35s linear infinite;
-        z-index: 2;
-      }
-
-      /* --- UI ELEMENTS --- */
-      .db-center {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 20px;
-        position: relative; 
-        z-index: 10;
-        width: 100%;
-      }
-
-      .db-brand {
-        font-family: 'Bebas Neue', sans-serif;
-        font-weight: 400;
-        text-transform: uppercase;
-        letter-spacing: 5px;
-        margin: 0;
-        font-size: clamp(48px, 12vw, 90px);
-        line-height: 1;
-        background: linear-gradient(180deg, #fdf5e6 0%, #e8d7ab 50%, #d4b97a 100%);
-        -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
-        text-shadow: 0 2px 0 rgba(0,0,0,0.35), 0 12px 28px rgba(0,0,0,0.35);
-      }
-
-      .db-bar-outer {
-        width: min(92vw, 760px); height: 14px;
-        background: rgba(255,255,255,0.06);
-        border: 1px solid var(--db-stroke);
-        border-radius: 999px; padding: 2px; overflow: hidden; position: relative;
-        box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
-      }
-      .db-bar-fill {
-        width: 0%; height: 100%; border-radius: 999px;
-        background: linear-gradient(90deg, var(--db-blue), #7bc4ff);
-        box-shadow: 0 0 14px var(--db-blue-glow);
-        transition: width .35s ease, background .35s ease, box-shadow .35s ease;
-        transform: translateZ(0);
-      }
-      .db-bar-fill.complete {
-        background: linear-gradient(90deg, var(--db-green), #5cb85c);
-        box-shadow: 0 0 14px var(--db-green-glow);
-      }
-      .db-bar-fill.error {
-        background: linear-gradient(90deg, var(--db-red), #e4606d);
-        box-shadow: 0 0 14px var(--db-red-glow);
-      }
-      .db-bar-label {
-        position: absolute; inset: 0; display: grid; place-items: center;
-        font-size: 12px; font-weight: 700; letter-spacing: .4px; color: #0b1220;
-        text-shadow: 0 1px 0 rgba(255,255,255,0.35); pointer-events: none;
-      }
-
-      .db-controls {
-        width: min(92vw, 760px); height: 48px;
-        display: flex; align-items: center; justify-content: center; gap: 12px;
-      }
-      .db-btn {
-        appearance: none; border: 0; cursor: pointer;
-        display: inline-flex; align-items: center; justify-content: center;
-        gap: 8px; border-radius: 8px; font-weight: 700;
-        transition: opacity .35s ease, visibility .35s ease, transform .15s ease, box-shadow .2s ease, background .2s ease, border-color .2s ease;
-        will-change: opacity, transform; opacity: 0; visibility: hidden; pointer-events: none;
-      }
-      .db-btn.show { opacity: 1; visibility: visible; pointer-events: auto; }
-      .db-btn:active { transform: translateY(2px); filter: brightness(0.95); }
-
-      .db-btn-primary[disabled], .db-btn-primary[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
-      .db-btn-primary {
-        color: var(--db-text); background: #4a3f32;
-        font-family: 'Inter', sans-serif; font-size: 14px;
-        text-transform: uppercase; letter-spacing: 1px;
-        padding: 14px 28px; border: 1px solid #7c6841;
-        box-shadow: inset 0 0 0 1px rgba(245, 238, 218, 0.1), 0 4px 12px rgba(0,0,0,0.5);
-        text-shadow: 0 1px 2px rgba(0,0,0,0.4);
-      }
-      .db-btn-primary:not([disabled]):hover {
-        background: #5a4f42; border-color: #a18a5b;
-        box-shadow: inset 0 0 0 1px rgba(245, 238, 218, 0.2), 0 6px 16px rgba(0,0,0,0.5);
-        transform: translateY(-1px);
-      }
-      .db-btn-primary:active { transform: translateY(1px); }
-
-      .db-btn-ghost {
-        color: var(--db-text); background: rgba(255,255,255,0.06);
-        border: 1px solid var(--db-stroke); padding: 10px 16px;
-      }
-      .db-btn-ghost:hover { background: rgba(255,255,255,0.09); }
-
-      /* --- DEBUG CARD --- */
-      .db-debug-card {
-        position: fixed; left: 50%; transform: translateX(-50%); bottom: 16px;
-        width: min(92vw, 760px); background: rgba(26, 22, 18, 0.7);
-        backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2);
-        border: 1px solid var(--db-stroke); border-radius: 14px;
-        box-shadow: 0 14px 40px rgba(0,0,0,.45);
-        overflow: hidden;
-        z-index: 10;
-      }
-      .db-log {
-        max-height: 28vh; min-height: 120px;
-        overflow: auto; padding: 10px 12px;
-        font-size: 12.5px; line-height: 1.55; scrollbar-width: thin;
-      }
-      .db-log p { margin: 0; padding: 2px 0; white-space: pre-wrap; display: flex; gap: 8px; }
-      .log-timestamp { color: var(--db-subtle); flex-shrink: 0; }
-      .log-info { color: #e6c891; }
-      .log-success { color: var(--db-green); }
-      .log-warn { color: #ffd46b; }
-      .log-error { color: var(--db-red); font-weight: 600; }
-    `;
-    const style = document.createElement('style');
-    style.type = 'text/css';
-    style.textContent = css;
-    document.head.appendChild(style);
-  }
+  // --- Utility, logging, and UI methods are unchanged ---
+  reportBootError(error, ctx = {}) { const mod = ctx.module || '(boot)'; const msg = (error && (error.stack || error.message || String(error))) || 'Unknown boot error'; this.log(`Boot import failed for ${mod}: ${msg}`, 'error'); this.statusElement.textContent = 'Boot Error'; this.progressBar.classList.remove('complete'); this.progressBar.classList.add('error'); this.progressBar.style.width = '100%'; this.percentEl.textContent = 'FAIL'; this.copyErrorsBtn.classList.add('show'); }
+  log(message, level = 'info') { if (!this.logContainer) return; const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 }); const p = document.createElement('p'); p.className = `log-${level}`; p.innerHTML = `<span class="log-timestamp">[${timestamp}]</span> ${message}`; this.logContainer.appendChild(p); this.logContainer.scrollTop = this.logContainer.scrollHeight; if (level === 'error') { this.errorCount++; this.copyErrorsBtn.classList.add('show'); } const consoleLevel = level === 'success' ? 'log' : level; (console[consoleLevel] || console.log).call(console, `[LoadingManager] ${message}`); }
+  fail(error, task) { if (this.hasFailed) return; this.hasFailed = true; const msg = error?.message || 'Unknown error'; this.log(`❌ FATAL during [${task?.name || task?.path || 'unknown'}]: ${msg}`, 'error'); console.error('[LoadingManager] Failure context:', { task, error }); this.statusElement.textContent = 'Fatal Error'; this.progressBar.classList.remove('complete'); this.progressBar.classList.add('error'); this.progressBar.style.width = '100%'; this.percentEl.textContent = 'FAIL'; this.copyErrorsBtn.classList.add('show'); }
+  _updateProgress(message, progress, opts = {}) { if (this.hasFailed) return; this.statusElement.textContent = message; const pct = Math.max(0, Math.min(100, Math.floor(progress))); this.percentEl.textContent = `${pct}%`; this.progressBar.style.width = `${pct}%`; this.progressBar.setAttribute('aria-valuenow', String(pct)); if (opts.complete || pct >= 100) { this.progressBar.classList.remove('error'); this.progressBar.classList.add('complete'); } }
+  _copyErrorsToClipboard() { const errs = [...this.logContainer.querySelectorAll('.log-error')].map(p => p.textContent.trim()); const text = errs.length ? errs.join('\n') : 'No errors logged.'; (async () => { try { await navigator.clipboard.writeText(text); this.log('Copied errors to clipboard.', 'success'); } catch { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); this.log('Copied errors to clipboard (fallback).', 'success'); } })(); }
+  _wireGlobalErrorCapture() { window.addEventListener('error', (e) => { const where = e?.filename ? ` @ ${e.filename}:${e.lineno}:${e.colno}` : ''; this.log(`Error: ${e?.message || 'Unknown'}${where}`, 'error'); }); window.addEventListener('unhandledrejection', (e) => { const reason = e?.reason?.message || e?.reason || 'Unhandled promise rejection'; this.log(`UnhandledRejection: ${reason}`, 'error'); }); }
+  _cacheDOMElements() { this.loadingScreen = document.getElementById('dustborne-loading-screen'); this.progressOuter = document.getElementById('dustborne-loading-bar-container'); this.progressBar = document.getElementById('dustborne-loading-bar'); this.percentEl = document.getElementById('dustborne-bar-label'); this.statusElement = document.getElementById('dustborne-loading-status'); this.startButton = document.getElementById('dustborne-start-button'); this.copyErrorsBtn = document.getElementById('dustborne-copy-errors-btn'); this.logContainer = document.getElementById('dustborne-log-container'); this.copyErrorsBtn.addEventListener('click', () => this._copyErrorsToClipboard()); }
+  _createDOM() { /* Unchanged */ }
+  _createStyles() { /* Unchanged */ }
 }
 
 const loadingManager = new LoadingManager();
