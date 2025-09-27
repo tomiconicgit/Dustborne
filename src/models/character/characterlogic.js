@@ -31,7 +31,10 @@ class AStarPathfinder {
     let reached = false;
     while (!frontier.isEmpty()) {
       const current = frontier.dequeue();
-      if (current === endTile) { reached = true; break; }
+      if (current.localX === endTile.localX && current.localZ === endTile.localZ && current.chunkX === endTile.chunkX && current.chunkZ === endTile.chunkZ) {
+        reached = true;
+        break;
+      }
       for (const next of this.world.getNeighbors8(current)) {
         if (!next.isWalkable) continue;
         const newCost = costSoFar.get(this._key(current)) + this._cost(current, next);
@@ -80,7 +83,10 @@ export default class Character {
     this._idleAction = null;
     this._walkPlaying = false;
     this._idlePlaying = false;
-    this.touchState = { isDragging: false, startPos: new THREE.Vector2() };
+    
+    // Touch state is now simpler: just tracks start time and position for tap detection.
+    this.touchState = { startTime: 0, startPos: new THREE.Vector2() };
+
     this.raycaster = new THREE.Raycaster();
     this.pathfinder = new AStarPathfinder(ChunkManager.instance);
   }
@@ -106,8 +112,8 @@ export default class Character {
   
   _attachInputListeners() {
     const domElement = Viewport.instance.domElement;
+    // REMOVED 'touchmove' listener to resolve conflict with camera controls.
     domElement.addEventListener('touchstart', this._onTouchStart.bind(this), { passive: false });
-    domElement.addEventListener('touchmove', this._onTouchMove.bind(this), { passive: false });
     domElement.addEventListener('touchend', this._onTouchEnd.bind(this), { passive: false });
   }
 
@@ -210,9 +216,36 @@ export default class Character {
     this._walkPlaying = true;
   }
   
-  _onTouchStart(e) { e.preventDefault(); if (e.touches.length === 1) { this.touchState.isDragging = false; this.touchState.startPos.set(e.touches[0].clientX, e.touches[0].clientY); } }
-  _onTouchMove(e) { e.preventDefault(); if (e.touches.length !== 1) return; const currentPos = new THREE.Vector2(e.touches[0].clientX, e.touches[0].clientY); if (this.touchState.startPos.distanceTo(currentPos) > 10) { this.touchState.isDragging = true; } }
-  _onTouchEnd(e) { e.preventDefault(); if (!this.touchState.isDragging && e.changedTouches.length === 1 && e.touches.length === 0) { this._handleTap(e.changedTouches[0]); } }
+  // --- REWRITTEN TOUCH LOGIC ---
+
+  _onTouchStart(e) {
+    // Only respond to the first finger touching the screen
+    if (e.touches.length === 1) {
+      this.touchState.startTime = performance.now();
+      this.touchState.startPos.set(e.touches[0].clientX, e.touches[0].clientY);
+    }
+  }
+
+  _onTouchEnd(e) {
+    // Ensure this is the end of a single-finger touch
+    if (e.touches.length > 0 || e.changedTouches.length !== 1) {
+      return;
+    }
+
+    const endPos = new THREE.Vector2(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+    const distance = this.touchState.startPos.distanceTo(endPos);
+    const duration = performance.now() - this.touchState.startTime;
+
+    // Define what constitutes a "tap": short duration and minimal movement.
+    const MAX_TAP_DURATION_MS = 300;
+    const MAX_TAP_DISTANCE_PX = 10;
+
+    // If the touch gesture qualifies as a tap, handle the movement logic.
+    // Otherwise, do nothing and let the CameraController handle it as a drag.
+    if (duration < MAX_TAP_DURATION_MS && distance < MAX_TAP_DISTANCE_PX) {
+      this._handleTap(e.changedTouches[0]);
+    }
+  }
 
   _handleTap(touch) {
     const rect = Viewport.instance.domElement.getBoundingClientRect();
