@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { getRockTemplate } from '../world/assets/rocks/copperore.js';
 
-const CHUNK_SIZE = 32;
+const CHUNK_SIZE = 32; // tiles per side
 
 export class Chunk {
   constructor(scene, world, chunkX, chunkZ) {
@@ -12,8 +12,6 @@ export class Chunk {
     this.chunkX = chunkX;
     this.chunkZ = chunkZ;
     this.tileSize = world.TILE_SIZE;
-    this.worldSize = CHUNK_SIZE * this.tileSize;
-    this.origin = new THREE.Vector3(this.chunkX * this.worldSize, 0, this.chunkZ * this.worldSize);
 
     this.group = new THREE.Group();
     this.group.name = `Chunk(${chunkX},${chunkZ})`;
@@ -26,86 +24,103 @@ export class Chunk {
   }
 
   _generateTiles() {
+    const originX = this.chunkX * CHUNK_SIZE * this.tileSize;
+    const originZ = this.chunkZ * CHUNK_SIZE * this.tileSize;
+
     for (let tz = 0; tz < CHUNK_SIZE; tz++) {
       for (let tx = 0; tx < CHUNK_SIZE; tx++) {
-        const worldX = this.origin.x + (tx + 0.5) * this.tileSize;
-        const worldZ = this.origin.z + (tz + 0.5) * this.tileSize;
-        
+        const worldX = originX + (tx - CHUNK_SIZE / 2 + 0.5) * this.tileSize;
+        const worldZ = originZ + (tz - CHUNK_SIZE / 2 + 0.5) * this.tileSize;
         const tile = {
-          chunk: this, localX: tx, localZ: tz,
+          chunk: this,
+          localX: tx,
+          localZ: tz,
           center: new THREE.Vector3(worldX, 0, worldZ),
-          isWalkable: true, userData: {}
+          isWalkable: true,
+          userData: {},
         };
         this.tiles.push(tile);
         this._tileMap.set(`${tx},${tz}`, tile);
       }
     }
   }
-  
+
   addRock(localX, localZ, scale = 1.0, rotation = 0) {
-      const tile = this._tileMap.get(`${localX},${localZ}`);
-      if (tile) {
-          tile.isWalkable = false;
-          this.rockData.push({ position: tile.center, scale, rotation });
-      }
+    const tile = this._tileMap.get(`${localX},${localZ}`);
+    if (tile) {
+      tile.isWalkable = false; // obstacle for pathfinder
+      this.rockData.push({ position: tile.center, scale, rotation });
+    }
   }
 
   async build() {
-    const geometriesByMaterial = { sand: [], dirt: [] };
+    // Group tiles by material
+    const buckets = { sand: [], dirt: [] };
     for (const tile of this.tiles) {
-      const geo = this.world.sharedTileGeo.clone();
-      geo.translate(tile.center.x, tile.center.y, tile.center.z);
-      (tile.userData.isDirt ? geometriesByMaterial.dirt : geometriesByMaterial.sand).push(geo);
-    }
-    
-    for (const materialType in geometriesByMaterial) {
-        const geometries = geometriesByMaterial[materialType];
-        if (geometries.length > 0) {
-            const mergedGeo = mergeGeometries(geometries);
-            const material = this.world.materials[materialType];
-            const mesh = new THREE.Mesh(mergedGeo, material);
-            mesh.receiveShadow = true;
-            mesh.userData.isLandscape = true;
-            this.group.add(mesh);
-        }
+      const g = this.world.sharedTileGeo.clone();
+      g.translate(tile.center.x, tile.center.y, tile.center.z);
+      (tile.userData.isDirt ? buckets.dirt : buckets.sand).push(g);
     }
 
+    // Merge per material
+    for (const key in buckets) {
+      const list = buckets[key];
+      if (!list.length) continue;
+      const merged = mergeGeometries(list);
+      const mat = this.world.materials[key];
+      const mesh = new THREE.Mesh(merged, mat);
+      mesh.receiveShadow = true;
+      mesh.userData.isLandscape = true; // raycast filter
+      this.group.add(mesh);
+    }
+
+    // Rocks via InstancedMesh
     if (this.rockData.length > 0) {
       const template = await getRockTemplate();
-      const instancedMesh = new THREE.InstancedMesh(template.geometry, template.material, this.rockData.length);
-      instancedMesh.castShadow = true;
-      instancedMesh.receiveShadow = true;
-      instancedMesh.userData.isMineable = true;
+      const imesh = new THREE.InstancedMesh(template.geometry, template.material, this.rockData.length);
+      imesh.castShadow = true;
+      imesh.receiveShadow = true;
+      imesh.userData.isMineable = true;
 
-      const matrix = new THREE.Matrix4();
-      const quat = new THREE.Quaternion();
-      const scaleVec = new THREE.Vector3();
+      const m = new THREE.Matrix4();
+      const q = new THREE.Quaternion();
+      const s = new THREE.Vector3();
 
       for (let i = 0; i < this.rockData.length; i++) {
         const { position, scale, rotation } = this.rockData[i];
-        const finalPosition = position.clone().add(template.position);
-        matrix.compose(
-            finalPosition,
-            quat.setFromEuler(new THREE.Euler(0, rotation, 0)),
-            scaleVec.set(scale, scale, scale)
-        );
-        instancedMesh.setMatrixAt(i, matrix);
+        const finalPos = position.clone().add(template.position || new THREE.Vector3());
+        m.compose(finalPos, q.setFromEuler(new THREE.Euler(0, rotation, 0)), s.set(scale, scale, scale));
+        imesh.setMatrixAt(i, m);
       }
-      this.group.add(instancedMesh);
+      this.group.add(imesh);
     }
   }
-  
+
   getTileAt(worldPos) {
-    const localX = Math.floor(worldPos.x - this.origin.x);
-    const localZ = Math.floor(worldPos.z - this.origin.z);
+    const total = CHUNK_SIZE * this.tileSize;
+    const originX = this.chunkX * total;
+    const originZ = this.chunkZ * total;
+
+    const localX = Math.floor((worldPos.x - (originX - total / 2)) / this.tileSize);
+    const localZ = Math.floor((worldPos.z - (originZ - total / 2)) / this.tileSize);
+
     if (localX < 0 || localX >= CHUNK_SIZE || localZ < 0 || localZ >= CHUNK_SIZE) return null;
-    return this._tileMap.get(`${localX},${localZ}`);
+    return this._tileMap.get(`${localX},${localZ}`) || null;
   }
 
   show() { this.scene.add(this.group); }
   hide() { this.scene.remove(this.group); }
-  
-  dispose() { /* ... */ }
+
+  dispose() {
+    this.hide();
+    this.group.traverse(child => {
+      if (child.isMesh) {
+        child.geometry?.dispose?.();
+        if (Array.isArray(child.material)) child.material.forEach(m => m?.dispose?.());
+        else child.material?.dispose?.();
+      }
+    });
+  }
 }
 
 export const DUSTBORNE_CHUNK_SIZE = CHUNK_SIZE;
