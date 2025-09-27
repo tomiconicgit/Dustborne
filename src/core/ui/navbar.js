@@ -108,8 +108,8 @@ export default class Navbar {
         left: 50%;
         transform: translateX(-50%);
         width: min(94vw, 720px);
-        height: 56px;
-        padding: 6px;
+        height: 52px;                 /* slightly shorter */
+        padding: 4px;                 /* slightly tighter */
         display: grid;
         grid-template-columns: repeat(4, 1fr);
         gap: 6px;
@@ -127,8 +127,8 @@ export default class Navbar {
       .dbui-nav-btn{
         appearance: none;
         margin: 0;
-        padding: 6px 4px;
-        height: 44px;
+        padding: 4px 4px;
+        height: 40px;                 /* shorter buttons */
         border: 0;
         border-radius: 10px;
         background: transparent;
