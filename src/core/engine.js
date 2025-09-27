@@ -12,7 +12,10 @@ export default class Engine {
       { name: 'Sky',                   type: 'script', path: './src/world/assets/sky/sky.js' },
       { name: 'Mining Area Chunk',     type: 'script', path: './src/world/chunks/miningarea.js' },
       { name: 'Desert Chunk',          type: 'script', path: './src/world/chunks/desert.js' },
-      { name: 'Copper Ore',            type: 'script', path: './src/world/assets/rocks/copperore.js' } // ← added
+      { name: 'Copper Ore',            type: 'script', path: './src/world/assets/rocks/copperore.js' },
+      // UI
+      { name: 'UI Navbar',             type: 'script', path: './src/core/ui/navbar.js' },
+      { name: 'UI Inventory',          type: 'script', path: './src/core/ui/inventory.js' },
     ];
   }
 
@@ -27,7 +30,10 @@ export default class Engine {
       { name: 'Sky',                   type: 'script', path: './src/world/assets/sky/sky.js' },
       { name: 'Mining Area Chunk',     type: 'script', path: './src/world/chunks/miningarea.js' },
       { name: 'Desert Chunk',          type: 'script', path: './src/world/chunks/desert.js' },
-      { name: 'Copper Ore',            type: 'script', path: './src/world/assets/rocks/copperore.js' } // ← added
+      { name: 'Copper Ore',            type: 'script', path: './src/world/assets/rocks/copperore.js' },
+      // UI
+      { name: 'UI Navbar',             type: 'script', path: './src/core/ui/navbar.js' },
+      { name: 'UI Inventory',          type: 'script', path: './src/core/ui/inventory.js' },
     ];
   }
 
