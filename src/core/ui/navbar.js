@@ -1,16 +1,5 @@
 // file: src/core/ui/navbar.js
-// Floating top navigation bar for mobile (Inventory, Skills, Missions, Map)
-
 export default class Navbar {
-  /**
-   * @param {object} opts
-   * @param {HTMLElement} [opts.parent=document.body] - Where to append the navbar
-   * @param {object} [opts.hooks] - Optional callbacks
-   * @param {Function} [opts.hooks.onInventory] - Called when Inventory is tapped
-   * @param {Function} [opts.hooks.onSkills]
-   * @param {Function} [opts.hooks.onMissions]
-   * @param {Function} [opts.hooks.onMap]
-   */
   constructor({ parent = document.body, hooks = {} } = {}) {
     this.parent = parent;
     this.hooks = hooks;
@@ -24,24 +13,16 @@ export default class Navbar {
   }
 
   get element() { return this.el; }
-
   dispose() {
     window.removeEventListener('resize', this._resizeHandler);
     window.removeEventListener('orientationchange', this._resizeHandler);
     this.el?.remove();
   }
-
   setActive(key) {
-    const map = {
-      inventory: this.btnInventory,
-      skills: this.btnSkills,
-      missions: this.btnMissions,
-      map: this.btnMap,
-    };
+    const map = { inventory: this.btnInventory, skills: this.btnSkills, missions: this.btnMissions, map: this.btnMap };
     Object.values(map).forEach(b => b?.classList.remove('dbui-nav-btn--active'));
     if (map[key]) map[key].classList.add('dbui-nav-btn--active');
   }
-
   _updateNavHeightVar() {
     const h = this.el.getBoundingClientRect().height;
     document.documentElement.style.setProperty('--dbui-nav-h', `${Math.ceil(h)}px`);
@@ -55,27 +36,14 @@ export default class Navbar {
     wrap.setAttribute('aria-label', 'Game');
 
     wrap.innerHTML = `
-      <button class="dbui-nav-btn" id="dbui-nav-inventory" aria-label="Inventory">
-        ${svg.inventory}
-        <span>Inventory</span>
-      </button>
-      <button class="dbui-nav-btn" id="dbui-nav-skills" aria-label="Skills">
-        ${svg.skills}
-        <span>Skills</span>
-      </button>
-      <button class="dbui-nav-btn" id="dbui-nav-missions" aria-label="Missions">
-        ${svg.missions}
-        <span>Missions</span>
-      </button>
-      <button class="dbui-nav-btn" id="dbui-nav-map" aria-label="Map">
-        ${svg.map}
-        <span>Map</span>
-      </button>
+      <button class="dbui-nav-btn" id="dbui-nav-inventory" aria-label="Inventory">${svg.inventory}<span>Inventory</span></button>
+      <button class="dbui-nav-btn" id="dbui-nav-skills" aria-label="Skills">${svg.skills}<span>Skills</span></button>
+      <button class="dbui-nav-btn" id="dbui-nav-missions" aria-label="Missions">${svg.missions}<span>Missions</span></button>
+      <button class="dbui-nav-btn" id="dbui-nav-map" aria-label="Map">${svg.map}<span>Map</span></button>
     `;
 
     this.parent.appendChild(wrap);
     this.el = wrap;
-
     this.btnInventory = wrap.querySelector('#dbui-nav-inventory');
     this.btnSkills    = wrap.querySelector('#dbui-nav-skills');
     this.btnMissions  = wrap.querySelector('#dbui-nav-missions');
@@ -104,12 +72,12 @@ export default class Navbar {
 
       .dbui-nav{
         position: fixed;
-        top: calc(env(safe-area-inset-top) + 10px);
+        bottom: calc(env(safe-area-inset-bottom) + 10px);
         left: 50%;
         transform: translateX(-50%);
-        width: min(94vw, 720px);
-        height: 52px;                 /* slightly shorter */
-        padding: 4px;                 /* slightly tighter */
+        width: min(90vw, 560px);           /* narrower so it never hits the edge */
+        height: 50px;                       /* slightly shorter */
+        padding: 4px;
         display: grid;
         grid-template-columns: repeat(4, 1fr);
         gap: 6px;
@@ -128,7 +96,7 @@ export default class Navbar {
         appearance: none;
         margin: 0;
         padding: 4px 4px;
-        height: 40px;                 /* shorter buttons */
+        height: 40px;
         border: 0;
         border-radius: 10px;
         background: transparent;
@@ -141,23 +109,11 @@ export default class Navbar {
         font: 600 12px/1 Inter, system-ui, sans-serif;
         letter-spacing: .2px;
       }
-      .dbui-nav-btn svg{
-        width: 22px; height: 22px; display: block;
-        opacity: .92;
-      }
-      .dbui-nav-btn span{
-        white-space: nowrap;
-        opacity: .92;
-      }
+      .dbui-nav-btn svg{ width:22px; height:22px; display:block; opacity:.92; }
+      .dbui-nav-btn span{ white-space:nowrap; opacity:.92; }
       .dbui-nav-btn:active{ transform: translateY(1px); }
       .dbui-nav-btn:hover{ background: rgba(255,255,255,.06); }
-
-      .dbui-nav-btn--active{
-        background: rgba(255,255,255,.10);
-        outline: 1px solid rgba(255,255,255,.12);
-        box-shadow: inset 0 0 0 1px rgba(0,0,0,.15);
-      }
-
+      .dbui-nav-btn--active{ background: rgba(255,255,255,.10); outline: 1px solid rgba(255,255,255,.12); box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
       .dbui-nav-btn svg path{ fill: var(--dbui-subtle); }
       .dbui-nav-btn--active svg path{ fill: var(--dbui-active); }
     `;
@@ -169,24 +125,8 @@ export default class Navbar {
 }
 
 const svg = {
-  inventory: `
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M7 7h10a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3v-7a3 3 0 0 1 3-3Zm1-4h8a1 1 0 0 1 1 1v2H7V4a1 1 0 0 1 1-1Zm3 9h2a1 1 0 0 1 0 2h-2a1 1 0 1 1 0-2Z"/>
-    </svg>
-  `,
-  skills: `
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 2 9.8 8.2 3 9l5 3.9L6.6 20 12 16.7 17.4 20 16 12.9 21 9l-6.8-.8L12 2Z"/>
-    </svg>
-  `,
-  missions: `
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M6 3h12a2 2 0 0 1 2 2v14l-4-3H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm3 5h6a1 1 0 1 1 0 2H9a1 1 0 1 1 0-2Zm0 4h4a1 1 0 1 1 0 2H9a1 1 0 1 1 0-2Z"/>
-    </svg>
-  `,
-  map: `
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M9 3 3 5.5v15L9 18l6 2.5 6-2.5v-15L15 5.5 9 3Zm6 3.7 4-1.6v11.2l-4 1.6V6.7ZM5 7.1l4-1.6v11.2l-4 1.6V7.1Z"/>
-    </svg>
-  `
+  inventory: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3v-7a3 3 0 0 1 3-3Zm1-4h8a1 1 0 0 1 1 1v2H7V4a1 1 0 0 1 1-1Zm3 9h2a1 1 0 0 1 0 2h-2a1 1 0 1 1 0-2Z"/></svg>`,
+  skills:    `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 9.8 8.2 3 9l5 3.9L6.6 20 12 16.7 17.4 20 16 12.9 21 9l-6.8-.8L12 2Z"/></svg>`,
+  missions:  `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12a2 2 0 0 1 2 2v14l-4-3H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm3 5h6a1 1 0 1 1 0 2H9a1 1 0 1 1 0-2Zm0 4h4a1 1 0 1 1 0 2H9a1 1 0 1 1 0-2Z"/></svg>`,
+  map:       `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3 3 5.5v15L9 18l6 2.5 6-2.5v-15L15 5.5 9 3Zm6 3.7 4-1.6v11.2l-4 1.6V6.7ZM5 7.1l4-1.6v11.2l-4 1.6V7.1Z"/></svg>`
 };
