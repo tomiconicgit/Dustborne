@@ -55,7 +55,7 @@ export default class DevTools {
     context.textAlign = 'center';
     context.textBaseline = 'middle';
     context.fillStyle = '#f5eeda';
-    context.fillText(text, size / 2, size / 2);
+    context.fillText(text, size / 2, size / 2 + 4); // Small offset for better vertical centering
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
     const material = new THREE.MeshBasicMaterial({
@@ -73,38 +73,44 @@ export default class DevTools {
     if (!this.labelsGroup.visible) this.labelsGroup.visible = true;
 
     let poolIndex = 0;
+    
+    // ** THE FIX **: Only show numbers in a small 20x20 range around the player
+    const range = 10;
+    const minX = playerPosition.x - range;
+    const maxX = playerPosition.x + range;
+    const minZ = playerPosition.z - range;
+    const maxZ = playerPosition.z + range;
 
-    // Iterate through active chunks only, not the whole world
     for (const chunk of this.world.activeChunks.values()) {
         for (const tile of chunk.tiles) {
-            // Get a mesh from the pool
-            let mesh = this.labelMeshPool[poolIndex];
-            if (!mesh) {
-                mesh = new THREE.Mesh(this.labelGeometry);
-                this.labelMeshPool.push(mesh);
-                this.labelsGroup.add(mesh);
+            // Check if the tile is within our small debug range
+            if (tile.center.x >= minX && tile.center.x <= maxX &&
+                tile.center.z >= minZ && tile.center.z <= maxZ) {
+                
+                let mesh = this.labelMeshPool[poolIndex];
+                if (!mesh) {
+                    mesh = new THREE.Mesh(this.labelGeometry);
+                    this.labelMeshPool.push(mesh);
+                    this.labelsGroup.add(mesh);
+                }
+                
+                const tileId = `${tile.chunk.chunkX},${tile.chunk.chunkZ}:${tile.localX},${tile.localZ}`;
+                mesh.material = this.getLabelMaterial(tileId);
+                mesh.position.copy(tile.center);
+                mesh.position.y += 0.003;
+                mesh.rotation.x = -Math.PI / 2;
+                mesh.visible = true;
+                
+                poolIndex++;
             }
-            
-            // Use a stable, readable ID format: "ChunkX,ChunkZ : LocalTileIndex"
-            const tileId = `${chunk.chunkX},${chunk.chunkZ}:${tile.localX},${tile.localZ}`;
-            mesh.material = this.getLabelMaterial(tileId);
-            mesh.position.copy(tile.center);
-            mesh.position.y += 0.003;
-            mesh.rotation.x = -Math.PI / 2;
-            mesh.visible = true;
-            
-            poolIndex++;
         }
     }
     
-    // Hide unused meshes
     for (let i = poolIndex; i < this.labelMeshPool.length; i++) {
         this.labelMeshPool[i].visible = false;
     }
   }
   
-  // No longer builds a static grid; the world is too big.
-  // The dev overlay is now fully dynamic in the update() loop.
   build() {}
 
   dispose() {
