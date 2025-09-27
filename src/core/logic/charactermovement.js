@@ -4,9 +4,10 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { AStarPathfinder } from './pathfinding.js';
 
 export default class CharacterMovement {
-  constructor(domElement, game, camera, player, world) {
-    this.domElement = domElement;
-    this.game = game;
+  // CHANGED: Simplified constructor, domElement and game scene are set later.
+  constructor({ camera, player, world }) {
+    this.domElement = null; // Will be set later
+    this.game = { scene: player.scene }; // Get scene from player
     this.camera = camera;
     this.player = player;
     this.world = world;
@@ -27,29 +28,35 @@ export default class CharacterMovement {
     this._idlePlaying = false;
     this._prewarmed = false;
 
-    this._onStart = this.onTouchStart.bind(this);
-    this._onMove  = this.onTouchMove.bind(this);
-    this._onEnd   = this.onTouchEnd.bind(this);
-    this.domElement.addEventListener('touchstart', this._onStart, { passive: false });
-    this.domElement.addEventListener('touchmove',  this._onMove,  { passive: false });
-    this.domElement.addEventListener('touchend',   this._onEnd,   { passive: false });
-
-    this._running = true;
-    this._lastT = performance.now();
-    requestAnimationFrame(this.tick.bind(this));
+    this._running = false; // Will be started by startTick()
+    this._lastT = 0;
+  }
+  
+  // ADDED: Method to attach input listeners after the viewport is created.
+  setDomElement(domElement) {
+      this.domElement = domElement;
+      this._onStart = this.onTouchStart.bind(this);
+      this._onMove  = this.onTouchMove.bind(this);
+      this._onEnd   = this.onTouchEnd.bind(this);
+      this.domElement.addEventListener('touchstart', this._onStart, { passive: false });
+      this.domElement.addEventListener('touchmove',  this._onMove,  { passive: false });
+      this.domElement.addEventListener('touchend',   this._onEnd,   { passive: false });
+  }
+  
+  // ADDED: Method to explicitly start the animation loop.
+  startTick() {
+      if (this._running) return;
+      this._running = true;
+      this._lastT = performance.now();
+      requestAnimationFrame(this.tick.bind(this));
   }
 
   tick(t) {
     if (!this._running) return;
     const dt = Math.min(0.05, (t - this._lastT) / 1000);
     this._lastT = t;
-
-    // Prepare mixer & actions once character exists
-    if (!this._mixer && this.player?.object) {
-      this._mixer = new THREE.AnimationMixer(this.player.object);
-      // Prewarm both actions so we never show a bind/T-pose frame
-      this._prewarmAnimations().catch((err) => console.error('Animation prewarm failed:', err));
-    }
+    
+    // This now runs after prewarming, so the mixer is guaranteed to exist.
     if (this._mixer) this._mixer.update(dt);
 
     this.player?.update(dt);
@@ -99,8 +106,7 @@ export default class CharacterMovement {
   }
 
   async handleTap(touch) {
-    if (!this.camera?.threeCamera || !this.player?.object) return;
-    // CHANGED: Use the viewport's bounds, not the full window, for NDC calculation.
+    if (!this.camera?.threeCamera || !this.player?.object || !this.domElement) return;
     const rect = this.domElement.getBoundingClientRect();
     const ndc = new THREE.Vector2(
       ((touch.clientX - rect.left) / rect.width) * 2 - 1,
@@ -129,7 +135,6 @@ export default class CharacterMovement {
       this._currentWaypointIndex = 0;
       this.player.moveTo(this._path[0]);
 
-      // Cross-fade from idle into walk without a zero-weight frame
       this._startWalk().catch((err) => console.error('Failed to start walk:', err));
     }
   }
@@ -162,11 +167,11 @@ export default class CharacterMovement {
     }
   }
 
-  async _prewarmAnimations() {
+  // CHANGED: This is now called from worldengine's prewarm.
+  async prewarmAnimations() {
     if (this._prewarmed) return;
     await Promise.all([this._ensureIdle(), this._ensureWalk()]);
 
-    // Start both actions; keep walk at 0 weight so there is always a pose (no T-pose)
     this._idleAction.reset().setLoop(THREE.LoopRepeat).play();
     this._walkAction.reset().setLoop(THREE.LoopRepeat).play();
     this._idleAction.enabled = true;
@@ -175,33 +180,28 @@ export default class CharacterMovement {
     this._walkAction.setEffectiveWeight(0);
     this._idlePlaying = true;
     this._walkPlaying = false;
-
-    // Evaluate once immediately so mixers cache the pose
+    
     this._mixer.update(0);
     this._prewarmed = true;
   }
 
   async _startIdle() {
-    await this._ensureIdle();
+    if (!this._idleAction) await this._ensureIdle();
     
     if (this._walkAction && this._walkPlaying) {
-      // fade from walk to idle
-      // ADDED .reset() for robustness.
       this._idleAction.reset().crossFadeFrom(this._walkAction, 0.18, false);
       this._walkPlaying = false;
     } else if (!this._idlePlaying) {
-      this._idleAction.play(); // Ensure it's playing if it wasn't
+      this._idleAction.play();
       this._idleAction.fadeIn(0.18);
     }
     this._idlePlaying = true;
   }
 
   async _startWalk() {
-    await this._ensureWalk();
+    if (!this._walkAction) await this._ensureWalk();
 
     if (this._idleAction && this._idlePlaying) {
-      // fade from idle to walk (keeps a valid pose throughout)
-      // ADDED .reset() for robustness. This is the key fix.
       this._walkAction.reset().crossFadeFrom(this._idleAction, 0.18, false);
       this._idlePlaying = false;
     } else if (!this._walkPlaying) {
