@@ -280,9 +280,12 @@ export async function show({ rootId = 'game-root' } = {}) {
   const devtools = new DevTools(scene, world, document.getElementById('game-root') || document.body);
   devtools.build();
 
-  // LOD updates
+  // Main game loop
   const step = () => {
-    if (character.object) world.update(character.object.position);
+    if (character.object) {
+      world.update(character.object.position);
+      devtools.update(character.object.position); // <-- THIS LINE IS ADDED
+    }
     requestAnimationFrame(step);
   };
   requestAnimationFrame(step);
