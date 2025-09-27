@@ -10,6 +10,10 @@ import { register as registerMining } from '../world/chunks/miningarea.js';
 import DevTools from './devtools.js';
 import { Chunk, DUSTBORNE_CHUNK_SIZE } from './chunk.js';
 
+// UI
+import Navbar from './ui/navbar.js';
+import InventoryPanel from './ui/inventory.js';
+
 class WorldEngine {
   constructor(scene) {
     this.scene = scene;
@@ -18,9 +22,9 @@ class WorldEngine {
     this.CHUNK_GRID_SIZE = DUSTBORNE_CHUNK_SIZE; // tiles per chunk (32)
     this.UNITS_PER_CHUNK = this.CHUNK_GRID_SIZE * this.TILE_SIZE;
 
-    this.chunks = new Map();       // all created chunks
-    this.activeChunks = new Map(); // visible/live chunks
-    this.viewDistance = 2;         // 5x5 around player
+    this.chunks = new Map();
+    this.activeChunks = new Map();
+    this.viewDistance = 2; // 5x5 around player
 
     this.sharedTileGeo = new THREE.PlaneGeometry(this.TILE_SIZE, this.TILE_SIZE).rotateX(-Math.PI / 2);
     this.materials = {
@@ -38,7 +42,6 @@ class WorldEngine {
     const chunk = new Chunk(this.scene, this, chunkX, chunkZ);
     this.chunks.set(key, chunk);
 
-    // Populate special content for origin chunk
     if (chunkX === 0 && chunkZ === 0) registerMining(chunk);
 
     await chunk.build();
@@ -57,7 +60,6 @@ class WorldEngine {
       }
     }
 
-    // Hide stale
     for (const [key, chunk] of this.activeChunks.entries()) {
       if (!required.has(key)) {
         chunk.hide();
@@ -65,7 +67,6 @@ class WorldEngine {
       }
     }
 
-    // Show/create new
     for (const [key, { x, z }] of required.entries()) {
       if (!this.activeChunks.has(key)) {
         this.getChunk(x, z).then(chunk => {
@@ -99,7 +100,6 @@ class WorldEngine {
         const neighbor = this.getTileAt(neighborPos);
         if (!neighbor || !neighbor.isWalkable) continue;
 
-        // Prevent cutting corners through blocked tiles on diagonals
         if (dx !== 0 && dz !== 0) {
           const sideA = this.getTileAt(tile.center.clone().add(new THREE.Vector3(dx * step, 0, 0)));
           const sideB = this.getTileAt(tile.center.clone().add(new THREE.Vector3(0, 0, dz * step)));
@@ -124,7 +124,6 @@ export async function prewarm() {
   await character.init(new THREE.Vector3(0, 0, 2));
   camera.setTarget(character.object);
 
-  // Pre-create the initial visible grid
   const uPerChunk = world.UNITS_PER_CHUNK;
   const pCX = Math.floor((character.object.position.x + uPerChunk * 0.5) / uPerChunk);
   const pCZ = Math.floor((character.object.position.z + uPerChunk * 0.5) / uPerChunk);
@@ -161,6 +160,19 @@ export function show({ rootId = 'game-root', prewarmedState }) {
   const movement = new CharacterMovement(viewport.domElement, { scene }, camera, character, world);
   const devtools = new DevTools(scene, world, root);
 
+  // --- UI wiring ---
+  const inventory = new InventoryPanel({ parent: document.body });
+  const navbar = new Navbar({
+    parent: document.body,
+    hooks: {
+      onInventory: () => inventory.toggle(),
+      onSkills:    () => navbar.setActive('skills'),
+      onMissions:  () => navbar.setActive('missions'),
+      onMap:       () => navbar.setActive('map'),
+    }
+  });
+  inventory.attachToNavbar(navbar);
+
   const step = () => {
     if (character.object) {
       world.update(character.object.position);
@@ -174,6 +186,8 @@ export function show({ rootId = 'game-root', prewarmedState }) {
   window.addEventListener('resize', onResize, { passive: true });
   onResize();
 
-  // expose for quick inspection
-  window.Dustborne = Object.assign(window.Dustborne || {}, { world, movement, devtools, scene, camera, viewport });
+  window.Dustborne = Object.assign(window.Dustborne || {}, {
+    world, movement, devtools, scene, camera, viewport,
+    ui: { navbar, inventory }
+  });
 }
