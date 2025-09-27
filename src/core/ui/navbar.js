@@ -43,7 +43,6 @@ export default class Navbar {
   }
 
   _updateNavHeightVar() {
-    // Expose navbar height to CSS (used by panels to sit under the bar)
     const h = this.el.getBoundingClientRect().height;
     document.documentElement.style.setProperty('--dbui-nav-h', `${Math.ceil(h)}px`);
   }
@@ -99,7 +98,6 @@ export default class Navbar {
         --dbui-stroke: rgba(245,238,218,0.12);
         --dbui-text: #f5eeda;
         --dbui-subtle:#c3b8a5;
-        --dbui-accent:#42a5ff;
         --dbui-active:#ffd46b;
         --dbui-shadow: 0 12px 30px rgba(0,0,0,.45);
       }
@@ -160,7 +158,6 @@ export default class Navbar {
         box-shadow: inset 0 0 0 1px rgba(0,0,0,.15);
       }
 
-      /* Icon coloring */
       .dbui-nav-btn svg path{ fill: var(--dbui-subtle); }
       .dbui-nav-btn--active svg path{ fill: var(--dbui-active); }
     `;
@@ -171,7 +168,6 @@ export default class Navbar {
   }
 }
 
-// Minimal, clean SVGs (inline so no network cost)
 const svg = {
   inventory: `
     <svg viewBox="0 0 24 24" aria-hidden="true">
