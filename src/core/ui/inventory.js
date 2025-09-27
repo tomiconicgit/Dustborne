@@ -4,7 +4,6 @@ export default class InventoryPanel {
     this.parent = parent;
     this._injectStyles();
     this._build();
-    // REMOVED: Syncing width is no longer necessary as it's full-width.
   }
 
   get element() { return this.el; }
@@ -14,23 +13,19 @@ export default class InventoryPanel {
   isOpen(){ return this.el.classList.contains('dbui-inv--open'); }
 
   dispose() {
-    // REMOVED: Event listeners are gone.
     this.el?.remove();
   }
   attachToNavbar(navbarInstance) { 
-      // This is still useful for getting the navbar height variable.
       this._navbar = navbarInstance?.element || null;
   }
   
-  // REMOVED: _syncWidthToNavbar function is obsolete.
-
   _build() {
     const wrap = document.createElement('section');
     wrap.id = 'db-ui-inventory';
-    wrap.className = 'dbui-inv';
+    // CHANGED: Panel now starts in the open state.
+    wrap.className = 'dbui-inv dbui-inv--open';
     wrap.setAttribute('role', 'region');
     wrap.setAttribute('aria-label', 'Inventory panel');
-    // The panel now starts open but invisible/translated, so aria-hidden is false.
     wrap.innerHTML = `<div class="dbui-inv-pad"></div>`;
     document.body.appendChild(wrap);
     this.el = wrap;
@@ -44,7 +39,6 @@ export default class InventoryPanel {
         --dbui-inv-stroke: rgba(245,238,218,0.1);
       }
       
-      /* CHANGED: Entire rule updated for new layout */
       .dbui-inv{
         position: fixed;
         top: 75vh;
@@ -60,13 +54,14 @@ export default class InventoryPanel {
         border-top: 1px solid var(--dbui-inv-stroke);
         z-index: 13000;
         overflow: hidden;
+        /* Start translated OFF screen (but still "open") */
         transform: translateY(100%);
         visibility: hidden;
         transition: transform .25s ease, visibility .0s ease .25s;
         pointer-events: none;
       }
 
-      /* CHANGED: Transition updated to slide in from the bottom. */
+      /* This class now controls visibility */
       .dbui-inv.dbui-inv--open{
         transform: translateY(0);
         visibility: visible;
