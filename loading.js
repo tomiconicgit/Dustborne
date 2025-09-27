@@ -6,6 +6,7 @@ class LoadingManager {
     this.errorCount = 0;
     this.loadedModules = new Map();
     this.engine = null; // keep engine instance for start routing
+    this.prewarmedState = null; // To hold the ready-to-go game world
 
     this._createStyles();
     this._createDOM();
@@ -36,15 +37,16 @@ class LoadingManager {
 
     // --- PHASE 1: VALIDATION ---
     this.log('Phase 1: Validating game files...');
+    this._updateProgress('Validating assets...', 0);
     const manifest = engineInstance.getFullManifest();
     if (!manifest || manifest.length === 0) {
       this.log('Manifest empty. Nothing to validate.', 'warn');
     } else {
       for (let i = 0; i < manifest.length; i++) {
         const task = manifest[i];
-        const progress = ((i + 1) / manifest.length) * 100;
+        const progress = ((i + 1) / manifest.length) * 15; // Phase 1 is 15% of the bar
         this._updateProgress(`Validating: ${task.name}`, progress);
-        await delay(120);
+        await delay(20);
         try {
           await this._validateFile(task);
         } catch (err) {
@@ -62,9 +64,9 @@ class LoadingManager {
     } else {
       for (let i = 0; i < initial.length; i++) {
         const task = initial[i];
-        const progress = ((i + 1) / initial.length) * 100;
+        const progress = 15 + ((i + 1) / initial.length) * 25; // Phase 2 is 25% of the bar
         this._updateProgress(`Loading: ${task.name}`, progress);
-        await delay(160);
+        await delay(30);
         try {
           const mod = await this._executeTask(task);
           this.loadedModules.set(task.path, mod);
@@ -74,6 +76,21 @@ class LoadingManager {
       }
     }
     this.log('✔ Phase 2 complete.', 'success');
+
+    // --- PHASE 3: PRE-WARM THE GAME WORLD ---
+    this.log('Phase 3: Building game world...');
+    const worldEngineModule = this.loadedModules.get('./src/core/worldengine.js');
+    if (!worldEngineModule || !worldEngineModule.prewarm) {
+        return this.fail(new Error('worldengine.js is missing the prewarm() function.'), { name: 'World Pre-warm'});
+    }
+    
+    // This prewarm function now loads all models and prepares the world
+    this._updateProgress('Spawning character...', 60);
+    await delay(100);
+    this._updateProgress('Placing world assets...', 80);
+    this.prewarmedState = await worldEngineModule.prewarm();
+    this.log('✔ Phase 3 complete.', 'success');
+
 
     // 100% + green; reveal Start (no layout shift)
     this._updateProgress('Ready to start', 100, { complete: true });
@@ -93,29 +110,20 @@ class LoadingManager {
 
       const run = () => {
         this.loadingScreen.remove();
-
-        // Ask engine what to boot as the start area
-        const startTarget = this.engine?.getStartModule?.();
-        if (!startTarget || !startTarget.path) {
-          this.log('Engine did not specify a start module.', 'error');
-          console.error('Engine did not specify a start module.');
-          return;
-        }
-
-        const mod = this.loadedModules.get(startTarget.path);
-        const fnName = startTarget.fn || 'show';
-
-        if (mod && typeof mod[fnName] === 'function') {
-          try {
-            // Pass a target root id for mounting if desired
-            mod[fnName]({ rootId: 'game-root' });
-          } catch (err) {
-            this.log(`Start handler threw: ${err?.message || err}`, 'error');
-            console.error('Start handler threw:', err);
-          }
+        
+        const worldEngineModule = this.loadedModules.get('./src/core/worldengine.js');
+        if (worldEngineModule && this.prewarmedState) {
+            try {
+                // Call the 'show' function with the fully loaded world state
+                worldEngineModule.show({ rootId: 'game-root', prewarmedState: this.prewarmedState });
+            } catch (err) {
+                this.log(`Start handler threw: ${err?.message || err}`, 'error');
+                console.error('Start handler threw:', err);
+            }
         } else {
-          this.log(`Could not find '${fnName}' in ${startTarget.path}`, 'error');
-          console.error(`Could not find '${fnName}' in ${startTarget.path}`);
+            const errText = 'Could not start game: world was not pre-warmed.';
+            this.log(errText, 'error');
+            console.error(errText);
         }
       };
 
