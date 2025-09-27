@@ -18,9 +18,9 @@ export default class Inventory {
       grid-template-columns: repeat(5, 1fr);
       grid-template-rows: repeat(3, 1fr);
       gap: 8px;
-      width: 70%;
+      width: 90%;
       max-width: 400px;
-      max-height: 70%;
+      max-height: 90%;
     `;
 
     const totalSlots = 15;
