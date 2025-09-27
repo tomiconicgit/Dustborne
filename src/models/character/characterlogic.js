@@ -34,14 +34,11 @@ class AStarPathfinder {
 
     while (!frontier.isEmpty()) {
       const current = frontier.dequeue();
-
-      // FIX: Compare tile coordinates/keys, not object references.
       if (this._key(current) === this._key(endTile)) {
         reached = true;
-        goalNode = current; // Store the actual goal node
+        goalNode = current;
         break;
       }
-
       for (const next of this.world.getNeighbors8(current)) {
         if (!next.isWalkable) continue;
         const newCost = costSoFar.get(this._key(current)) + this._cost(current, next);
@@ -55,9 +52,8 @@ class AStarPathfinder {
       }
     }
     if (!reached) return null;
-
     const path = [];
-    let cur = goalNode; // Start reconstruction from the actual goal node found
+    let cur = goalNode;
     while (cur) {
       path.push(cur.center.clone());
       cur = cameFrom.get(this._key(cur));
@@ -89,11 +85,11 @@ export default class Character {
     this._epsilon = 0.05;
     this._path = null;
     this._currentWaypointIndex = 0;
+    
+    // --- FIX: Rewritten animation state logic ---
     this._mixer = null;
-    this._walkAction = null;
-    this._idleAction = null;
-    this._walkPlaying = false;
-    this._idlePlaying = false;
+    this._actions = {}; // To hold 'idle', 'walk' actions
+    this._activeAction = null; // To track the currently playing animation
     
     this.touchState = { startTime: 0, startPos: new THREE.Vector2() };
 
@@ -103,7 +99,7 @@ export default class Character {
 
   async init() {
     await this._loadModel();
-    await this._prewarmAnimations();
+    await this._loadAnimations();
     this._attachInputListeners();
     Camera.main.setTarget(this.object);
     this._startUpdateLoop();
@@ -118,6 +114,7 @@ export default class Character {
     root.position.copy(position);
     scene.add(root);
     this.object = root;
+    this._mixer = new THREE.AnimationMixer(this.object);
   }
   
   _attachInputListeners() {
@@ -149,17 +146,14 @@ export default class Character {
           this._moveTo(this._path[this._currentWaypointIndex]);
         } else {
           this._path = null;
-          this._startIdle();
+          this.setAnimation('idle'); // Use new animation handler
         }
       }
-    } else if (!this._moving && !this._idlePlaying) {
-      this._startIdle();
     }
     
     this._mixer?.update(dt);
     ChunkManager.instance?.update(this.object.position, this.viewDistance);
     Camera.main?.update();
-
     GridToggle.main?.update(this.object.position);
   }
 
@@ -194,42 +188,38 @@ export default class Character {
       this._path = path;
       this._currentWaypointIndex = 0;
       this._moveTo(this._path[0]);
-      this._startWalk();
+      this.setAnimation('walk'); // Use new animation handler
     }
   }
 
-  async _prewarmAnimations() {
-    this._mixer = new THREE.AnimationMixer(this.object);
-    const [idleClip, walkClip] = await Promise.all([ this._loadClip(this.idleUrl), this._loadClip(this.walkUrl) ]);
-    this._idleAction = this._mixer.clipAction(idleClip);
-    this._walkAction = this._mixer.clipAction(walkClip);
-    this._idleAction.reset().setLoop(THREE.LoopRepeat).play();
-    this._walkAction.reset().setLoop(THREE.LoopRepeat).play();
-    this._idleAction.setEffectiveWeight(1);
-    this._walkAction.setEffectiveWeight(0);
-    this._idlePlaying = true;
-    this._walkPlaying = false;
-    this._mixer.update(0);
+  // --- FIX: Rewritten animation system ---
+  async _loadAnimations() {
+    const loader = new GLTFLoader();
+    const [idleGltf, walkGltf] = await Promise.all([
+      loader.loadAsync(this.idleUrl),
+      loader.loadAsync(this.walkUrl)
+    ]);
+    
+    this._actions.idle = this._mixer.clipAction(idleGltf.animations[0]);
+    this._actions.walk = this._mixer.clipAction(walkGltf.animations[0]);
+    
+    // Start with the idle animation
+    this.setAnimation('idle');
   }
   
-  async _loadClip(url) {
-    const gltf = await new GLTFLoader().loadAsync(url);
-    return gltf.animations[0];
-  }
-  
-  _startIdle() {
-    if (this._walkPlaying) { this._idleAction.reset().crossFadeFrom(this._walkAction, 0.25, false); }
-    else if (!this._idlePlaying) { this._idleAction.reset().fadeIn(0.25); }
-    this._walkPlaying = false;
-    this._idlePlaying = true;
-  }
+  setAnimation(name) {
+    const newAction = this._actions[name];
+    if (newAction === this._activeAction) return;
 
-  _startWalk() {
-    if (this._idlePlaying) { this._walkAction.reset().crossFadeFrom(this._idleAction, 0.25, false); }
-    else if (!this._walkPlaying) { this._walkAction.reset().fadeIn(0.25); }
-    this._idlePlaying = false;
-    this._walkPlaying = true;
+    // Fade out the previous action and fade in the new one
+    if (this._activeAction) {
+      newAction.crossFadeFrom(this._activeAction, 0.25, true);
+    }
+    
+    newAction.play();
+    this._activeAction = newAction;
   }
+  // --- End of animation system fix ---
   
   _onTouchStart(e) {
     if (e.touches.length === 1) {
