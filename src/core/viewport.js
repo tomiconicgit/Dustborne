@@ -51,7 +51,7 @@ export default class Viewport {
     this._canvas = document.createElement('canvas');
     this._canvas.id = 'db-viewport';
     this._canvas.style.cssText = `
-      position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; 
+      position: fixed; top: 0; left: 0; width: 100vw; height: 60vh; 
       display: block; touch-action: none;
     `;
     this._root.appendChild(this._canvas);
@@ -86,7 +86,7 @@ export default class Viewport {
 
   _resize = () => {
     const width = window.innerWidth;
-    const height = window.innerHeight;
+    const height = window.innerHeight * 0.6;
     const dpr = Math.min(window.devicePixelRatio, 2);
     this._renderer.setPixelRatio(dpr);
     this._renderer.setSize(width, height, false);
