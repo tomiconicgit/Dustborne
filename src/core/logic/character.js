@@ -1,44 +1,65 @@
 // file: src/core/logic/character.js
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { scene } from '../scene.js';
+import CharacterMovement from './charactermovement.js';
+import ChunkManager from '../../world/chunks/chunkmanager.js';
 
 export default class Character {
-  constructor(scene, url = './src/assets/models/charatcer.glb') {
-    this.scene = scene;
-    this.url = url;
-    this.object = null;
-  }
+  static main = null;
 
-  // The prewarm function is now the entry point for creating a character.
-  static async prewarm(scene) {
-    const character = new Character(scene);
-    await character.init();
-    return character;
+  static create() {
+    if (Character.main) return;
+    const character = new Character();
+    Character.main = character;
+    character.init(); // Asynchronously initialize
+  }
+  
+  constructor() {
+    if(Character.main) {
+      throw new Error('Character is a singleton.');
+    }
+    this.object = null;
+    this.url = './src/assets/models/charatcer.glb';
+    this.movement = null;
+
+    // The character is now responsible for its own view distance.
+    this.viewDistance = 2; // e.g., 2 chunks in every direction
   }
 
   async init(position = new THREE.Vector3(0, 0, 2)) {
     const loader = new GLTFLoader();
     const gltf = await loader.loadAsync(this.url);
-    const root = gltf.scene || (gltf.scenes && gltf.scenes[0]);
+    const root = gltf.scene || gltf.scenes[0];
     if (!root) throw new Error('charatcer.glb has no scene');
     
     root.traverse(o => {
       if (o.isMesh) {
         o.castShadow = true;
         o.receiveShadow = true;
-        if (!o.material.isMeshStandardMaterial) {
-          o.material = new THREE.MeshStandardMaterial({
-            color: (o.material.color?.clone()) || new THREE.Color(0xffffff),
-            metalness: 0.1,
-            roughness: 0.8
-          });
-        }
+        // ... material setup
       }
     });
     
     root.position.copy(position);
-    this.scene.add(root);
+    scene.add(root);
     this.object = root;
-    return this;
+    
+    // Once the character model is loaded, create its movement controller
+    this.movement = CharacterMovement.create(this);
+
+    // Start the loop that updates the world chunks
+    this.startChunkUpdateLoop();
+  }
+
+  // This character-owned loop tells the chunk manager what to load.
+  startChunkUpdateLoop() {
+    const update = () => {
+      if (this.object && ChunkManager.instance) {
+        ChunkManager.instance.update(this.object.position, this.viewDistance);
+      }
+      requestAnimationFrame(update);
+    };
+    requestAnimationFrame(update);
   }
 }
