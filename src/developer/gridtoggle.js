@@ -1,7 +1,26 @@
 // file: src/developer/gridtoggle.js
 import * as THREE from 'three';
+import { scene } from '../core/three.js';
+import ChunkManager from '../world/chunks/chunkmanager.js';
 
 export default class GridToggle {
+  static main = null;
+
+  /**
+   * This static method is the entry point called by the loading manager.
+   * It creates the single instance of the GridToggle tool.
+   */
+  static create() {
+    if (GridToggle.main) return;
+    
+    // Ensure core systems are ready before creating the tool
+    if (!scene || !ChunkManager.instance) {
+      console.error('GridToggle cannot be created: Core systems (Scene, ChunkManager) are not ready.');
+      return;
+    }
+    GridToggle.main = new GridToggle(scene, ChunkManager.instance);
+  }
+
   constructor(scene, world, domOverlayParent = document.body) {
     this.scene = scene;
     this.world = world;
@@ -26,7 +45,7 @@ export default class GridToggle {
       zIndex: '20000', padding: '10px 12px', font: '600 12px/1 Inter, system-ui, sans-serif',
       color: '#111', background: '#f5eeda', border: '1px solid rgba(0,0,0,.2)',
       borderRadius: '10px', opacity: '0.9', boxShadow: '0 2px 8px rgba(0,0,0,.35)',
-      '-webkitTapHighlightColor': 'transparent'
+      '-webkitTapHighlightColor': 'transparent', cursor: 'pointer'
     });
     this.button.addEventListener('click', () => {
       this.group.visible = !this.group.visible;
@@ -54,7 +73,7 @@ export default class GridToggle {
   }
 
   update(playerPosition) {
-    if (!this.group.visible) {
+    if (!this.group.visible || !this.world.activeChunks) {
       if (this.labelsGroup.visible) this.labelsGroup.visible = false;
       return;
     }
@@ -65,8 +84,12 @@ export default class GridToggle {
     const maxX = playerPosition.x + range;
     const minZ = playerPosition.z - range;
     const maxZ = playerPosition.z + range;
+    
+    // The debug tool assumes chunks will have a 'tiles' array.
+    // This is for debugging only and might need adjustment based on final ChunkManager structure.
     for (const chunk of this.world.activeChunks.values()) {
-      for (const tile of chunk.tiles) { // Assumes chunks will have a 'tiles' array for debugging
+        if (!chunk.tiles) continue; // Safety check
+      for (const tile of chunk.tiles) {
         if (tile.center.x >= minX && tile.center.x <= maxX && tile.center.z >= minZ && tile.center.z <= maxZ) {
           let mesh = this.labelMeshPool[poolIndex];
           if (!mesh) {
