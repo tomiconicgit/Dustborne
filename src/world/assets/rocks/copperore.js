@@ -25,10 +25,10 @@ async function loadTemplate(url = './src/world/assets/rocks/copperore.glb') {
     }
   });
 
-  const bbox = new THREE.Box3().setFromObject(root);
+  // The 'root' object from the GLB file contains the transform (including Y position)
+  // set in the model editor. We wrap it in a template group to make cloning easy.
   const template = new THREE.Group();
   template.add(root);
-  template.userData.__bboxMinY = bbox.min.y;
   _template = template;
   return _template;
 }
@@ -39,8 +39,12 @@ export async function spawnSingleRock(scene, { center = new THREE.Vector3(), til
 
   clone.traverse((o) => { if (o.isMesh) o.material = o.material.clone(); });
 
-  const minY = template.userData.__bboxMinY ?? 0;
-  clone.position.set(center.x, -minY - 0.05, center.z);
+  // The 'center' vector from the tile has a Y value of 0. By copying it,
+  // we place the rock's container at ground level. The rock model inside
+  // this container retains its relative Y position from the editor,
+  // allowing it to sit partially above or below the ground as intended.
+  clone.position.copy(center);
+
   clone.rotation.y = Math.random() * Math.PI * 2;
   const s = THREE.MathUtils.lerp(1.0, 1.3, Math.random());
   clone.scale.setScalar(s);
