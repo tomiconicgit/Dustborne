@@ -45,16 +45,24 @@ export class Chunk {
     }
   }
 
-  addRock(localX, localZ, scale = 1.0, rotation = 0) {
+  /**
+   * Add a rock instance on a tile with optional authored per-instance Y offset.
+   * @param {number} localX
+   * @param {number} localZ
+   * @param {number} scale        default 1.0
+   * @param {number} rotation     radians, yaw around Y
+   * @param {number} yOffset      extra Y offset (meters) from your editor (default 0)
+   */
+  addRock(localX, localZ, scale = 1.0, rotation = 0, yOffset = 0) {
     const tile = this._tileMap.get(`${localX},${localZ}`);
     if (tile) {
       tile.isWalkable = false; // obstacle for pathfinder
-      this.rockData.push({ position: tile.center, scale, rotation });
+      this.rockData.push({ position: tile.center, scale, rotation, yOffset });
     }
   }
 
   async build() {
-    // Group tiles by material
+    // Ground: merge per material
     const buckets = { sand: [], dirt: [] };
     for (const tile of this.tiles) {
       const g = this.world.sharedTileGeo.clone();
@@ -62,7 +70,6 @@ export class Chunk {
       (tile.userData.isDirt ? buckets.dirt : buckets.sand).push(g);
     }
 
-    // Merge per material
     for (const key in buckets) {
       const list = buckets[key];
       if (!list.length) continue;
@@ -70,11 +77,11 @@ export class Chunk {
       const mat = this.world.materials[key];
       const mesh = new THREE.Mesh(merged, mat);
       mesh.receiveShadow = true;
-      mesh.userData.isLandscape = true; // raycast filter
+      mesh.userData.isLandscape = true; // raycast filter for taps
       this.group.add(mesh);
     }
 
-    // Rocks via InstancedMesh
+    // Rocks via InstancedMesh, preserving authored local transform AND per-instance yOffset
     if (this.rockData.length > 0) {
       const template = await getRockTemplate();
       const imesh = new THREE.InstancedMesh(template.geometry, template.material, this.rockData.length);
@@ -87,9 +94,22 @@ export class Chunk {
       const s = new THREE.Vector3();
 
       for (let i = 0; i < this.rockData.length; i++) {
-        const { position, scale, rotation } = this.rockData[i];
-        const finalPos = position.clone().add(template.position || new THREE.Vector3());
-        m.compose(finalPos, q.setFromEuler(new THREE.Euler(0, rotation, 0)), s.set(scale, scale, scale));
+        const { position, scale, rotation, yOffset = 0 } = this.rockData[i];
+
+        const pos = position.clone();
+        pos.y += yOffset; // ← respect the per-instance Y you authored
+
+        m.compose(
+          pos,
+          q.setFromEuler(new THREE.Euler(0, rotation, 0)),
+          s.set(scale, scale, scale)
+        );
+
+        // Apply the mesh's authored LOCAL transform (includes your editor Y)
+        if (template.localMatrix) {
+          m.multiply(template.localMatrix);
+        }
+
         imesh.setMatrixAt(i, m);
       }
       this.group.add(imesh);
