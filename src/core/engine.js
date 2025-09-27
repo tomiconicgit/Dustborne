@@ -37,6 +37,9 @@ export default class Engine {
       
       // Create the player character, which starts its own systems
       { path: './src/models/character/characterlogic.js', startFunction: 'create' },
+
+      // FIX: Add the GridToggle to the startup sequence so it gets created.
+      { path: './src/developer/gridtoggle.js', startFunction: 'create' },
     ];
   }
 }
