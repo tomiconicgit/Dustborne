@@ -25,7 +25,7 @@ export default class CharacterMovement {
     requestAnimationFrame(this.tick.bind(this));
   }
 
-  // Pre-load animations
+  // ** THE FIX **: Pre-load all animations before the game starts.
   async initAnimations() {
     this._mixer = new THREE.AnimationMixer(this.player.object);
     const loader = new GLTFLoader();
@@ -35,10 +35,10 @@ export default class CharacterMovement {
     ]);
     this._idleAction = this._mixer.clipAction(idleGltf.animations[0]);
     this._walkAction = this._mixer.clipAction(walkGltf.animations[0]);
-    this._startIdle(); // Start idling immediately
+    this._idleAction.play(); // Start idling immediately.
   }
 
-  // Connect event listeners after viewport is created
+  // Connect event listeners after the viewport is created.
   connect(domElement) {
     this.domElement = domElement;
     this._onStart = this.onTouchStart.bind(this);
@@ -59,6 +59,7 @@ export default class CharacterMovement {
 
     if (this._path && !this.player.isMoving()) {
       this._currentWaypointIndex++;
+      // ** THE FIX **: Corrected typo from this.path to this._path.
       if (this._currentWaypointIndex < this._path.length) {
         this.player.moveTo(this._path[this._currentWaypointIndex]);
       } else {
@@ -69,9 +70,25 @@ export default class CharacterMovement {
     }
   }
   
-  onTouchStart(e) { /* ... unchanged ... */ }
-  onTouchMove(e) { /* ... unchanged ... */ }
-  onTouchEnd(e) { /* ... unchanged ... */ }
+  onTouchStart(e) {
+    if (e.touches.length === 1) {
+      this.touchState.isDragging = false;
+      this.touchState.startPos.set(e.touches[0].clientX, e.touches[0].clientY);
+    }
+  }
+  onTouchMove(e) {
+    if (e.touches.length !== 1 || this.touchState.isDragging) return;
+    const currentPos = new THREE.Vector2(e.touches[0].clientX, e.touches[0].clientY);
+    if (this.touchState.startPos.distanceTo(currentPos) > 10) {
+      this.touchState.isDragging = true;
+    }
+  }
+  onTouchEnd(e) {
+    if (!this.touchState.isDragging && e.changedTouches.length === 1) {
+      this.handleTap(e.changedTouches[0]);
+    }
+    this.touchState.isDragging = false;
+  }
 
   async handleTap(touch) {
     if (!this.camera?.threeCamera || !this.player?.object) return;
@@ -98,13 +115,13 @@ export default class CharacterMovement {
     }
   }
 
-  // --- Animation Helpers are now synchronous ---
+  // Animation helpers are now synchronous and use cross-fading.
   _startIdle() {
     this._walkAction.crossFadeTo(this._idleAction, 0.3, true);
-    this._idleAction.reset().setLoop(THREE.LoopRepeat).play();
+    this._idleAction.play();
   }
   _startWalk() {
     this._idleAction.crossFadeTo(this._walkAction, 0.3, true);
-    this._walkAction.reset().setLoop(THREE.LoopRepeat).play();
+    this._walkAction.play();
   }
 }
