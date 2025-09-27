@@ -18,7 +18,6 @@ export default class InventoryPanel {
     this._resizeHandler = () => this._syncWidthToNavbar();
     window.addEventListener('resize', this._resizeHandler, { passive: true });
     window.addEventListener('orientationchange', this._resizeHandler, { passive: true });
-    // Initial width sync (in case navbar is already present)
     queueMicrotask(() => this._syncWidthToNavbar());
   }
 
@@ -45,11 +44,10 @@ export default class InventoryPanel {
     if (!this._navbar) this._navbar = document.getElementById('db-ui-navbar');
     if (this._navbar) {
       const r = this._navbar.getBoundingClientRect();
-      // Match width & horizontal position of the navbar
       this.el.style.width = `${Math.round(r.width)}px`;
       this.el.style.left = `${Math.round(r.left)}px`;
+      this.el.style.removeProperty('transform');
     } else {
-      // Fallback to centered width similar to navbar defaults
       this.el.style.width = 'min(94vw, 720px)';
       this.el.style.left = '50%';
       this.el.style.transform = 'translateX(-50%)';
@@ -64,7 +62,6 @@ export default class InventoryPanel {
     wrap.setAttribute('aria-label', 'Inventory panel (read-only)');
     wrap.setAttribute('aria-hidden', 'true');
 
-    // Grid
     const grid = document.createElement('div');
     grid.className = 'dbui-inv-grid';
     grid.style.setProperty('--cols', String(this.cols));
@@ -76,7 +73,7 @@ export default class InventoryPanel {
       slot.type = 'button';
       slot.className = 'dbui-inv-slot';
       slot.setAttribute('aria-label', `Slot ${i + 1} empty`);
-      slot.disabled = true; // display-only for now
+      slot.disabled = true;
       grid.appendChild(slot);
     }
 
@@ -99,8 +96,7 @@ export default class InventoryPanel {
       .dbui-inv{
         position: fixed;
         top: calc(env(safe-area-inset-top) + 10px + var(--dbui-nav-h, 56px) + 8px);
-        /* width & left set dynamically to match navbar */
-        height: clamp(140px, 26vh, 320px); /* not too tall */
+        height: clamp(140px, 26vh, 320px);
         padding: 10px;
         background: var(--dbui-inv-bg);
         backdrop-filter: blur(14px) saturate(1.2);
@@ -109,8 +105,8 @@ export default class InventoryPanel {
         border-radius: 14px;
         box-shadow: 0 14px 40px rgba(0,0,0,.45);
         z-index: 11990;
-        overflow: hidden; /* fixed panel, no scroll */
-        transform: translateY(-18px); /* start a bit tucked under bar */
+        overflow: hidden;
+        transform: translateY(-18px);
         opacity: 0;
         visibility: hidden;
         transition: opacity .22s ease, transform .22s ease, visibility .22s ease;
@@ -138,7 +134,7 @@ export default class InventoryPanel {
         background: var(--dbui-inv-slot);
         border-radius: 10px;
         box-shadow: var(--dbui-inv-slot-shadow);
-        pointer-events: none; /* read-only placeholder */
+        pointer-events: none;
       }
     `;
     const style = document.createElement('style');
