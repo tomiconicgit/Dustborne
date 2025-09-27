@@ -4,12 +4,13 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { AStarPathfinder } from './pathfinding.js';
 
 export default class CharacterMovement {
+  // ** THE FIX **: Constructor signature updated to remove obsolete 'landscape' parameter.
   constructor(domElement, game, camera, player, world) {
     this.domElement = domElement;
     this.game = game;
     this.camera = camera;
     this.player = player;
-    this.world = world;
+    this.world = world; // Now correctly assigned
     this.raycaster = new THREE.Raycaster();
 
     this.pathfinder = new AStarPathfinder(world);
@@ -52,7 +53,7 @@ export default class CharacterMovement {
     if (this._path) {
       if (!this.player.isMoving()) {
         this._currentWaypointIndex++;
-        if (this._currentWaypointIndex < this._path.length) {
+        if (this._currentWaypointIndex < this.path.length) {
           this.player.moveTo(this._path[this._currentWaypointIndex]);
         } else {
           this._path = null;
@@ -69,15 +70,29 @@ export default class CharacterMovement {
     requestAnimationFrame(this.tick.bind(this));
   }
   
-  dispose() { /* ... */ }
-  onTouchStart(e) { /* ... */ }
-  onTouchMove(e) { /* ... */ }
+  onTouchStart(e) {
+    if (e.touches.length === 1) {
+      this.touchState.isDragging = false;
+      this.touchState.startPos.set(e.touches[0].clientX, e.touches[0].clientY);
+    }
+  }
+
+  onTouchMove(e) {
+    e.preventDefault();
+    if (e.touches.length !== 1) return;
+    const currentPos = new THREE.Vector2(e.touches[0].clientX, e.touches[0].clientY);
+    // ** THE FIX **: If the finger moves more than a small threshold, it's a drag.
+    if (this.touchState.startPos.distanceTo(currentPos) > 10) {
+      this.touchState.isDragging = true;
+    }
+  }
 
   onTouchEnd(e) {
+    // ** THE FIX **: Only handle tap if we haven't detected a drag.
     if (!this.touchState.isDragging && e.changedTouches.length === 1 && e.touches.length === 0) {
       this.handleTap(e.changedTouches[0]);
     }
-    this.touchState.isDragging = false;
+    this.touchState.isDragging = false; // Reset for next touch
   }
 
   async handleTap(touch) {
@@ -85,20 +100,13 @@ export default class CharacterMovement {
     const tapNDC = new THREE.Vector2((touch.clientX/window.innerWidth)*2-1, -(touch.clientY/window.innerHeight)*2+1);
     this.raycaster.setFromCamera(tapNDC, this.camera.threeCamera);
     
-    // Raycast against all visible objects in active chunks
     const hits = this.raycaster.intersectObjects(this.game.scene.children, true);
-    
     let targetPoint = null;
 
     for (const hit of hits) {
-        // ** THE FIX **: Check for userData flags on the hit object
         if (hit.object.userData.isLandscape) {
             targetPoint = hit.point;
             break; 
-        }
-        if (hit.object.userData.isMineable) {
-            // Logic for interacting with rocks can go here in the future
-            // For now, we just want to be able to walk on the ground
         }
     }
 
@@ -120,11 +128,49 @@ export default class CharacterMovement {
     }
   }
 
-  // Animation helpers... (unchanged)
-  async _ensureMixer() { /*...*/ }
-  async _loadClip(url) { /*...*/ }
-  async _startIdle() { /*...*/ }
-  _stopIdle() { /*...*/ }
-  async _startWalk() { /*...*/ }
-  _stopWalk() { /*...*/ }
+  // --- Animation Helpers ---
+  async _ensureMixer() {
+    if (!this._mixer && this.player?.object) {
+      this._mixer = new THREE.AnimationMixer(this.player.object);
+    }
+    return this._mixer;
+  }
+  async _loadClip(url) {
+    const gltf = await new GLTFLoader().loadAsync(url);
+    const clip = gltf.animations?.[0];
+    if (!clip) throw new Error(`No animation in ${url}`);
+    return clip;
+  }
+  async _startIdle() {
+    await this._ensureMixer();
+    if (!this._idleAction) {
+      const clip = await this._loadClip(this.idleUrl);
+      this._idleAction = this._mixer.clipAction(clip);
+    }
+    if (!this._idlePlaying) {
+      this._idleAction.reset().setLoop(THREE.LoopRepeat).fadeIn(0.2).play();
+      this._idlePlaying = true;
+    }
+  }
+  _stopIdle() {
+    if (this._idleAction && this._idlePlaying) this._idleAction.fadeOut(0.2);
+    this._idlePlaying = false;
+  }
+  async _startWalk() {
+    await this._ensureMixer();
+    if (!this._walkAction) {
+      const clip = await this._loadClip(this.walkUrl);
+      this._walkAction = this._mixer.clipAction(clip);
+    }
+    if (!this._walkPlaying) {
+        if (this._idleAction && this._idlePlaying) this._idleAction.crossFadeTo(this._walkAction, 0.2, true);
+        else this._walkAction.reset().setLoop(THREE.LoopRepeat).fadeIn(0.2).play();
+        this._walkPlaying = true;
+        this._idlePlaying = false;
+    }
+  }
+  _stopWalk() {
+    if (this._walkAction && this._walkPlaying) this._walkAction.fadeOut(0.2);
+    this._walkPlaying = false;
+  }
 }
