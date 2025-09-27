@@ -25,6 +25,7 @@ export default class CharacterMovement {
     this._idleAction = null;
     this._walkPlaying = false;
     this._idlePlaying = false;
+    this._prewarmed = false;
 
     this._onStart = this.onTouchStart.bind(this);
     this._onMove  = this.onTouchMove.bind(this);
@@ -43,10 +44,11 @@ export default class CharacterMovement {
     const dt = Math.min(0.05, (t - this._lastT) / 1000);
     this._lastT = t;
 
-    // Ensure mixer once the character object exists; kick idle immediately.
+    // Prepare mixer & actions once character exists
     if (!this._mixer && this.player?.object) {
       this._mixer = new THREE.AnimationMixer(this.player.object);
-      this._startIdle().catch(() => {});
+      // Prewarm both actions so we never show a bind/T-pose frame
+      this._prewarmAnimations().catch(() => {});
     }
     if (this._mixer) this._mixer.update(dt);
 
@@ -54,29 +56,25 @@ export default class CharacterMovement {
     this.camera?.update();
 
     if (this._path) {
-      // Move along path: when we finish a segment, advance to the next.
       if (!this.player.isMoving()) {
         this._currentWaypointIndex++;
         if (this._currentWaypointIndex < this._path.length) {
           this.player.moveTo(this._path[this._currentWaypointIndex]);
         } else {
-          // Arrived at destination
           this._path = null;
           this.player.cancelActions();
-          this._stopWalk();
           this._startIdle().catch(() => {});
         }
       }
-    } else {
-      // No active path: ensure we're idling if not moving
-      if (!this.player.isMoving()) {
-        if (this._walkPlaying) this._stopWalk();
-        if (!this._idlePlaying) this._startIdle().catch(() => {});
-      }
+    } else if (!this.player.isMoving()) {
+      // Make sure we end up in idle if nothing is happening
+      if (!this._idlePlaying) this._startIdle().catch(() => {});
     }
+
     requestAnimationFrame(this.tick.bind(this));
   }
 
+  // ---------- Input ----------
   onTouchStart(e) {
     e.preventDefault();
     if (e.touches.length === 1) {
@@ -84,7 +82,6 @@ export default class CharacterMovement {
       this.touchState.startPos.set(e.touches[0].clientX, e.touches[0].clientY);
     }
   }
-
   onTouchMove(e) {
     e.preventDefault();
     if (e.touches.length !== 1) return;
@@ -93,10 +90,8 @@ export default class CharacterMovement {
       this.touchState.isDragging = true;
     }
   }
-
   onTouchEnd(e) {
     e.preventDefault();
-    // Only treat as a tap if we didn't drag
     if (!this.touchState.isDragging && e.changedTouches.length === 1 && e.touches.length === 0) {
       this.handleTap(e.changedTouches[0]);
     }
@@ -111,14 +106,10 @@ export default class CharacterMovement {
     );
     this.raycaster.setFromCamera(ndc, this.camera.threeCamera);
 
-    // Raycast world; look specifically for our merged ground meshes
     const hits = this.raycaster.intersectObjects(this.game.scene.children, true);
     let groundPoint = null;
     for (const hit of hits) {
-      if (hit.object?.userData?.isLandscape) {
-        groundPoint = hit.point;
-        break;
-      }
+      if (hit.object?.userData?.isLandscape) { groundPoint = hit.point; break; }
     }
     if (!groundPoint) return;
 
@@ -134,27 +125,26 @@ export default class CharacterMovement {
       this.player.showTapMarkerAt?.(targetCenter);
       this._path = path;
       this._currentWaypointIndex = 0;
-      this.player.moveTo(this._path[0]); // start with first waypoint
-      this._stopIdle();
+      this.player.moveTo(this._path[0]);
+
+      // Cross-fade from idle into walk without a zero-weight frame
       this._startWalk().catch(() => {});
     }
   }
 
-  // --- Animation helpers ---
+  // ---------- Anim helpers ----------
   async _ensureMixer() {
     if (!this._mixer && this.player?.object) {
       this._mixer = new THREE.AnimationMixer(this.player.object);
     }
     return this._mixer;
   }
-
   async _loadClip(url) {
     const gltf = await new GLTFLoader().loadAsync(url);
     const clip = gltf.animations?.[0];
     if (!clip) throw new Error(`No animation in ${url}`);
     return clip;
   }
-
   async _ensureIdle() {
     await this._ensureMixer();
     if (!this._idleAction) {
@@ -162,7 +152,6 @@ export default class CharacterMovement {
       this._idleAction = this._mixer.clipAction(clip);
     }
   }
-
   async _ensureWalk() {
     await this._ensureMixer();
     if (!this._walkAction) {
@@ -171,39 +160,50 @@ export default class CharacterMovement {
     }
   }
 
+  async _prewarmAnimations() {
+    if (this._prewarmed) return;
+    await Promise.all([this._ensureIdle(), this._ensureWalk()]);
+
+    // Start both actions; keep walk at 0 weight so there is always a pose (no T-pose)
+    this._idleAction.reset().setLoop(THREE.LoopRepeat).play();
+    this._walkAction.reset().setLoop(THREE.LoopRepeat).play();
+    this._idleAction.enabled = true;
+    this._walkAction.enabled = true;
+    this._idleAction.setEffectiveWeight(1);
+    this._walkAction.setEffectiveWeight(0);
+    this._idlePlaying = true;
+    this._walkPlaying = false;
+
+    // Evaluate once immediately so mixers cache the pose
+    this._mixer.update(0);
+    this._prewarmed = true;
+  }
+
   async _startIdle() {
     await this._ensureIdle();
-    // Make sure action is started before fading/crossfading
-    this._idleAction.reset().setLoop(THREE.LoopRepeat).play();
+    this._idleAction.play(); // make sure it's playing
+
     if (this._walkAction && this._walkPlaying) {
-      this._walkAction.crossFadeTo(this._idleAction, 0.2, true);
+      // fade from walk to idle
+      this._idleAction.crossFadeFrom(this._walkAction, 0.18, false);
       this._walkPlaying = false;
     } else {
-      this._idleAction.fadeIn(0.2);
+      this._idleAction.fadeIn(0.18);
     }
     this._idlePlaying = true;
   }
 
-  _stopIdle() {
-    if (this._idleAction && this._idlePlaying) this._idleAction.fadeOut(0.2);
-    this._idlePlaying = false;
-  }
-
   async _startWalk() {
     await this._ensureWalk();
-    // Start walk action first, then crossfade for reliability across three.js versions
-    this._walkAction.reset().setLoop(THREE.LoopRepeat).play();
+    this._walkAction.play(); // start first to avoid a blank frame
+
     if (this._idleAction && this._idlePlaying) {
-      this._idleAction.crossFadeTo(this._walkAction, 0.2, true);
+      // fade from idle to walk (keeps a valid pose throughout)
+      this._walkAction.crossFadeFrom(this._idleAction, 0.18, false);
       this._idlePlaying = false;
     } else {
-      this._walkAction.fadeIn(0.2);
+      this._walkAction.fadeIn(0.18);
     }
     this._walkPlaying = true;
-  }
-
-  _stopWalk() {
-    if (this._walkAction && this._walkPlaying) this._walkAction.fadeOut(0.2);
-    this._walkPlaying = false;
   }
 }
