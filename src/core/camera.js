@@ -27,7 +27,7 @@ export default class Camera {
     this.target = null;
     this.threeCamera = new THREE.PerspectiveCamera(
       75,
-      window.innerWidth / window.innerHeight, // Corrected aspect ratio
+      window.innerWidth / window.innerHeight,
       0.1,
       5000
     );
@@ -54,7 +54,7 @@ export default class Camera {
   }
 
   handleResize = () => {
-    this.threeCamera.aspect = window.innerWidth / window.innerHeight; // Corrected aspect ratio
+    this.threeCamera.aspect = window.innerWidth / window.innerHeight;
     this.threeCamera.updateProjectionMatrix();
   };
 }
@@ -75,7 +75,37 @@ class CameraController {
     this.domElement.addEventListener('touchend', this._onEnd, { passive: false });
   }
   dispose() { this.domElement.removeEventListener('touchstart', this._onStart); this.domElement.removeEventListener('touchmove', this._onMove); this.domElement.removeEventListener('touchend', this._onEnd); }
-  onTouchStart(event) { if (event.touches.length === 1) { this.touchState.isDragging = false; this.touchState.startPos.set(event.touches[0].clientX, event.touches[0].clientY); this.touchState.lastDragX = event.touches[0].clientX; } }
-  onTouchMove(event) { event.preventDefault(); if (event.touches.length !== 1) return; const currentPos = new THREE.Vector2(event.touches[0].clientX, event.touches[0].clientY); if (this.touchState.startPos.distanceTo(currentPos) > 10) { this.touchState.isDragging = true; } if (this.touchState.isDragging) { const deltaX = event.touches[0].clientX - this.touchState.lastDragX; this.camera.orbitAngle -= deltaX * 0.01; this.touchState.lastDragX = event.touches[0].clientX; this.camera.update(); } }
-  onTouchEnd() { this.touchState.isDragging = false; }
+  
+  onTouchStart(event) {
+    if (event.touches.length === 1) {
+      this.touchState.isDragging = false;
+      this.touchState.startPos.set(event.touches[0].clientX, event.touches[0].clientY);
+      this.touchState.lastDragX = event.touches[0].clientX;
+    }
+  }
+
+  onTouchMove(event) {
+    event.preventDefault();
+    if (event.touches.length !== 1) return;
+
+    const currentPos = new THREE.Vector2(event.touches[0].clientX, event.touches[0].clientY);
+
+    // Set dragging state only after a minimum distance has been covered
+    if (!this.touchState.isDragging && this.touchState.startPos.distanceTo(currentPos) > 10) {
+      this.touchState.isDragging = true;
+    }
+
+    // Only perform rotation if we are in a dragging state
+    if (this.touchState.isDragging) {
+      const deltaX = event.touches[0].clientX - this.touchState.lastDragX;
+      this.camera.orbitAngle -= deltaX * 0.01;
+      this.touchState.lastDragX = event.touches[0].clientX;
+      this.camera.update();
+    }
+  }
+  
+  onTouchEnd() {
+    // Simply reset the dragging state. The tap logic is handled entirely by the character.
+    this.touchState.isDragging = false;
+  }
 }
