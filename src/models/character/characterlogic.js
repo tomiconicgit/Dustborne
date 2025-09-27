@@ -1,12 +1,11 @@
-// file: src/core/logic/characterlogic.js
+// file: src/models/character/characterlogic.js
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { scene } from '../scene.js';
-import Viewport from '../viewport.js';
-import Camera from '../camera.js';
+import { scene } from '../../core/three.js';
+import Viewport from '../../core/viewport.js';
+import Camera from '../../core/camera.js';
 import ChunkManager from '../../world/chunks/chunkmanager.js';
 
-// --- Helper classes for pathfinding ---
 class PriorityQueue {
   constructor() { this.elements = []; }
   enqueue(element, priority) { this.elements.push({ element, priority }); this.elements.sort((a, b) => a.priority - b.priority); }
@@ -16,7 +15,7 @@ class PriorityQueue {
 
 class AStarPathfinder {
   constructor(world) { this.world = world; }
-  _key(tile) { if (!tile) return ''; return `${tile.chunk.chunkX},${tile.chunk.chunkZ}:${tile.localX},${tile.localZ}`; }
+  _key(tile) { if (!tile) return ''; return `${tile.chunkX},${tile.chunkZ}:${tile.localX},${tile.localZ}`; }
   _cost(a, b) { return a.center.distanceTo(b.center); }
   _heuristic(a, b) { return a.center.distanceTo(b.center); }
   findPath(startPos, endPos) {
@@ -34,6 +33,7 @@ class AStarPathfinder {
       const current = frontier.dequeue();
       if (current === endTile) { reached = true; break; }
       for (const next of this.world.getNeighbors8(current)) {
+        if (!next.isWalkable) continue;
         const newCost = costSoFar.get(this._key(current)) + this._cost(current, next);
         const nk = this._key(next);
         if (!costSoFar.has(nk) || newCost < costSoFar.get(nk)) {
@@ -53,78 +53,52 @@ class AStarPathfinder {
   }
 }
 
-// --- Main Character Class ---
 export default class Character {
   static main = null;
 
   static create() {
     if (Character.main) return;
     Character.main = new Character();
-    Character.main.init(); // Asynchronously initialize
+    Character.main.init();
   }
   
   constructor() {
-    if(Character.main) {
-      throw new Error('Character is a singleton.');
-    }
-    
-    // --- Properties ---
+    if(Character.main) throw new Error('Character is a singleton.');
     this.object = null;
-    this.url = './src/assets/models/charatcer.glb';
+    this.url = './src/models/character/charatcer.glb';
+    this.walkUrl = './src/models/character/animations/walking.glb';
+    this.idleUrl = './src/models/character/animations/idle.glb';
     this.viewDistance = 2;
-
-    // Movement & State
     this._moving = false;
     this._dest = new THREE.Vector3();
     this._speed = 3.0;
     this._epsilon = 0.05;
     this._path = null;
     this._currentWaypointIndex = 0;
-    
-    // Animation
-    this.walkUrl = './src/assets/models/animations/walking.glb';
-    this.idleUrl = './src/assets/models/animations/idle.glb';
     this._mixer = null;
     this._walkAction = null;
     this._idleAction = null;
     this._walkPlaying = false;
     this._idlePlaying = false;
-    
-    // Input & Systems
     this.touchState = { isDragging: false, startPos: new THREE.Vector2() };
     this.raycaster = new THREE.Raycaster();
     this.pathfinder = new AStarPathfinder(ChunkManager.instance);
   }
 
   async init() {
-    // 1. Load the character model
     await this._loadModel();
-    
-    // 2. Pre-load animations
     await this._prewarmAnimations();
-    
-    // 3. Connect to other systems
     this._attachInputListeners();
     Camera.main.setTarget(this.object);
-    
-    // 4. Start update loops
     this._startUpdateLoop();
   }
   
-  // --- Initialization ---
   async _loadModel(position = new THREE.Vector3(0, 0, 2)) {
     const loader = new GLTFLoader();
     const gltf = await loader.loadAsync(this.url);
     const root = gltf.scene || gltf.scenes[0];
     if (!root) throw new Error('charatcer.glb has no scene');
-    
-    root.traverse(o => {
-      if (o.isMesh) {
-        o.castShadow = true;
-        o.receiveShadow = true;
-      }
-    });
-    
+    root.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     root.position.copy(position);
     scene.add(root);
     this.object = root;
@@ -142,20 +116,15 @@ export default class Character {
     const update = (t) => {
       const dt = Math.min(0.05, (t - lastT) / 1000);
       lastT = t;
-
       this.update(dt);
-      
       requestAnimationFrame(update);
     };
     requestAnimationFrame(update);
   }
 
-  // --- Main Update Logic (called every frame) ---
   update(dt) {
     if (!this.object) return;
-    
     this._updatePosition(dt);
-
     if (this._path) {
       if (!this._moving) {
         this._currentWaypointIndex++;
@@ -169,12 +138,10 @@ export default class Character {
     } else if (!this._moving && !this._idlePlaying) {
       this._startIdle();
     }
-    
     this._mixer?.update(dt);
     ChunkManager.instance?.update(this.object.position, this.viewDistance);
   }
 
-  // --- Movement & Pathfinding ---
   _moveTo(point) {
     this._dest.copy(point);
     this._dest.y = this.object.position.y;
@@ -210,16 +177,11 @@ export default class Character {
     }
   }
 
-  // --- Animation ---
   async _prewarmAnimations() {
     this._mixer = new THREE.AnimationMixer(this.object);
-    const [idleClip, walkClip] = await Promise.all([
-        this._loadClip(this.idleUrl),
-        this._loadClip(this.walkUrl)
-    ]);
+    const [idleClip, walkClip] = await Promise.all([ this._loadClip(this.idleUrl), this._loadClip(this.walkUrl) ]);
     this._idleAction = this._mixer.clipAction(idleClip);
     this._walkAction = this._mixer.clipAction(walkClip);
-    
     this._idleAction.reset().setLoop(THREE.LoopRepeat).play();
     this._walkAction.reset().setLoop(THREE.LoopRepeat).play();
     this._idleAction.setEffectiveWeight(1);
@@ -235,68 +197,33 @@ export default class Character {
   }
   
   _startIdle() {
-    if (this._walkPlaying) {
-      this._idleAction.reset().crossFadeFrom(this._walkAction, 0.25, false);
-    } else if (!this._idlePlaying) {
-      this._idleAction.reset().fadeIn(0.25);
-    }
+    if (this._walkPlaying) { this._idleAction.reset().crossFadeFrom(this._walkAction, 0.25, false); }
+    else if (!this._idlePlaying) { this._idleAction.reset().fadeIn(0.25); }
     this._walkPlaying = false;
     this._idlePlaying = true;
   }
 
   _startWalk() {
-    if (this._idlePlaying) {
-      this._walkAction.reset().crossFadeFrom(this._idleAction, 0.25, false);
-    } else if (!this._walkPlaying) {
-      this._walkAction.reset().fadeIn(0.25);
-    }
+    if (this._idlePlaying) { this._walkAction.reset().crossFadeFrom(this._idleAction, 0.25, false); }
+    else if (!this._walkPlaying) { this._walkAction.reset().fadeIn(0.25); }
     this._idlePlaying = false;
     this._walkPlaying = true;
   }
   
-  // --- Input Handling ---
-  _onTouchStart(e) {
-    e.preventDefault();
-    if (e.touches.length === 1) {
-      this.touchState.isDragging = false;
-      this.touchState.startPos.set(e.touches[0].clientX, e.touches[0].clientY);
-    }
-  }
-
-  _onTouchMove(e) {
-    e.preventDefault();
-    if (e.touches.length !== 1) return;
-    const currentPos = new THREE.Vector2(e.touches[0].clientX, e.touches[0].clientY);
-    if (this.touchState.startPos.distanceTo(currentPos) > 10) {
-      this.touchState.isDragging = true;
-    }
-  }
-
-  _onTouchEnd(e) {
-    e.preventDefault();
-    if (!this.touchState.isDragging && e.changedTouches.length === 1 && e.touches.length === 0) {
-      this._handleTap(e.changedTouches[0]);
-    }
-  }
+  _onTouchStart(e) { e.preventDefault(); if (e.touches.length === 1) { this.touchState.isDragging = false; this.touchState.startPos.set(e.touches[0].clientX, e.touches[0].clientY); } }
+  _onTouchMove(e) { e.preventDefault(); if (e.touches.length !== 1) return; const currentPos = new THREE.Vector2(e.touches[0].clientX, e.touches[0].clientY); if (this.touchState.startPos.distanceTo(currentPos) > 10) { this.touchState.isDragging = true; } }
+  _onTouchEnd(e) { e.preventDefault(); if (!this.touchState.isDragging && e.changedTouches.length === 1 && e.touches.length === 0) { this._handleTap(e.changedTouches[0]); } }
 
   _handleTap(touch) {
     const rect = Viewport.instance.domElement.getBoundingClientRect();
-    const ndc = new THREE.Vector2(
-      ((touch.clientX - rect.left) / rect.width) * 2 - 1,
-      -((touch.clientY - rect.top) / rect.height) * 2 + 1
-    );
+    const ndc = new THREE.Vector2( ((touch.clientX - rect.left) / rect.width) * 2 - 1, -((touch.clientY - rect.top) / rect.height) * 2 + 1 );
     this.raycaster.setFromCamera(ndc, Camera.main.threeCamera);
-    
     const hits = this.raycaster.intersectObjects(scene.children, true);
-    let groundPoint = null;
     for (const hit of hits) {
       if (hit.object?.userData?.isLandscape) {
-        groundPoint = hit.point;
+        this._goTo(hit.point);
         break;
       }
-    }
-    if (groundPoint) {
-      this._goTo(groundPoint);
     }
   }
 }
