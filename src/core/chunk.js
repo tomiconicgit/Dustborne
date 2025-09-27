@@ -1,6 +1,7 @@
 // file: src/core/chunk.js
 import * as THREE from 'three';
-import { BufferGeometryUtils } from 'three/addons/utils/BufferGeometryUtils.js';
+// The FIX is here: We import the specific 'mergeGeometries' function
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { getRockTemplate } from '../world/assets/rocks/copperore.js';
 
 const CHUNK_SIZE = 32; // Each chunk is 32x32 tiles. A smaller, more manageable size.
@@ -70,7 +71,8 @@ export class Chunk {
     }
     
     if (groundGeometries.length > 0) {
-      const mergedGround = BufferGeometryUtils.mergeGeometries(groundGeometries);
+      // The FIX is here: We call the function directly
+      const mergedGround = mergeGeometries(groundGeometries);
       this.groundMesh = new THREE.Mesh(mergedGround, this.world.sharedGroundMaterial);
       this.groundMesh.receiveShadow = true;
       this.group.add(this.groundMesh);
