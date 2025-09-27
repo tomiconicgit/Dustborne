@@ -124,6 +124,11 @@ export async function prewarm() {
   await character.init(new THREE.Vector3(0, 0, 2));
   camera.setTarget(character.object);
 
+  // CHANGED: Pre-warm the movement controller AND animations to prevent T-pose.
+  const movement = new CharacterMovement({ camera, player: character, world });
+  await movement.prewarmAnimations();
+
+  // Load initial chunks
   const uPerChunk = world.UNITS_PER_CHUNK;
   const pCX = Math.floor((character.object.position.x + uPerChunk * 0.5) / uPerChunk);
   const pCZ = Math.floor((character.object.position.z + uPerChunk * 0.5) / uPerChunk);
@@ -137,11 +142,13 @@ export async function prewarm() {
   await Promise.all(jobs);
   world.update(character.object.position);
 
-  return { scene, camera, world, character };
+  // CHANGED: Pass the fully pre-warmed movement controller.
+  return { scene, camera, world, character, movement };
 }
 
 export function show({ rootId = 'game-root', prewarmedState }) {
-  const { scene, camera, world, character } = prewarmedState;
+  // CHANGED: Get the pre-warmed movement controller from the state.
+  const { scene, camera, world, character, movement } = prewarmedState;
 
   let root = document.getElementById(rootId) || document.createElement('div');
   root.id = rootId;
@@ -155,24 +162,54 @@ export function show({ rootId = 'game-root', prewarmedState }) {
   viewport.setCamera(camera.threeCamera);
   viewport.start();
 
+  // Initialize controllers with the viewport's DOM element
   new CameraController(viewport.domElement, camera);
+  movement.setDomElement(viewport.domElement); // Connect input listeners now
+  movement.startTick(); // Start the animation/update loop
 
-  const movement = new CharacterMovement(viewport.domElement, { scene }, camera, character, world);
   const devtools = new DevTools(scene, world, root);
 
   // --- UI wiring ---
+  // ADDED: State management for UI tabs.
+  let activeTab = 'inventory';
+  
   const inventory = new InventoryPanel({ parent: document.body });
+  
+  const handleTabClick = (tabName) => {
+    // If the clicked tab is already active, do nothing.
+    if (activeTab === tabName) {
+      return;
+    }
+    
+    // Update state and UI
+    activeTab = tabName;
+    navbar.setActive(tabName);
+
+    // Show/hide panels based on the new active tab
+    if (tabName === 'inventory') {
+      inventory.open();
+    } else {
+      inventory.close();
+    }
+    // Future panels would go here:
+    // if (tabName === 'skills') skillsPanel.open(); else skillsPanel.close();
+  };
+
   const navbar = new Navbar({
     parent: document.body,
     hooks: {
-      onInventory: () => inventory.toggle(),
-      onSkills:    () => navbar.setActive('skills'),
-      onMissions:  () => navbar.setActive('missions'),
-      onMap:       () => navbar.setActive('map'),
+      onInventory: () => handleTabClick('inventory'),
+      onSkills:    () => handleTabClick('skills'),
+      onMissions:  () => handleTabClick('missions'),
+      onMap:       () => handleTabClick('map'),
     }
   });
+  
+  // Set initial UI state
+  navbar.setActive('inventory');
   inventory.attachToNavbar(navbar);
 
+  // Main game loop for non-animation logic (like chunk loading)
   const step = () => {
     if (character.object) {
       world.update(character.object.position);
