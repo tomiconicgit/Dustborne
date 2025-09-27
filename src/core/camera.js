@@ -27,7 +27,7 @@ export default class Camera {
     this.target = null;
     this.threeCamera = new THREE.PerspectiveCamera(
       75,
-      window.innerWidth / window.innerHeight,
+      window.innerWidth / (window.innerHeight * 0.6),
       0.1,
       5000
     );
@@ -54,7 +54,7 @@ export default class Camera {
   }
 
   handleResize = () => {
-    this.threeCamera.aspect = window.innerWidth / window.innerHeight;
+    this.threeCamera.aspect = window.innerWidth / (window.innerHeight * 0.6);
     this.threeCamera.updateProjectionMatrix();
   };
 }
