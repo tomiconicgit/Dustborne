@@ -1,17 +1,16 @@
 // file: src/world/chunks/desert.js
-import * as THREE from 'three';
-
-export default class Desert {
-  static baseColor = new THREE.Color('#C2B280'); // sandy beige
-
-  // Retained for reference; world tiler builds tiles instead.
-  constructor() {
-    this.mesh = new THREE.Group();
-    const geo = new THREE.PlaneGeometry(50, 50);
-    const mat = new THREE.MeshStandardMaterial({ color: Desert.baseColor, roughness: 1, metalness: 0 });
-    const m = new THREE.Mesh(geo, mat);
-    m.rotation.x = -Math.PI / 2;
-    m.receiveShadow = true;
-    this.mesh.add(m);
-  }
+/**
+ * Generates the layout data for a desert chunk.
+ * @param {number} chunkX - The X coordinate of the chunk.
+ * @param {number} chunkZ - The Z coordinate of the chunk.
+ * @returns {{tiles: Array, objects: Array}}
+ */
+export function generateData(chunkX, chunkZ) {
+  // A desert chunk has all sand tiles by default and no special objects.
+  // The ChunkManager will create a sand plane, so we don't need to specify tile data.
+  // We can add random cacti or rocks here in the future.
+  return {
+    tiles: [], // Empty means 'all default' (sand)
+    objects: []  // No objects in the desert for now
+  };
 }
