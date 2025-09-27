@@ -34,43 +34,41 @@ export class AStarPathfinder {
     if (!startTile || !endTile || !endTile.isWalkable) return null;
 
     const frontier = new PriorityQueue();
-    frontier.enqueue(startTile, 0);
-
     const cameFrom = new Map();
     const costSoFar = new Map();
 
-    const startKey = this._key(startTile);
-    cameFrom.set(startKey, null);
-    costSoFar.set(startKey, 0);
+    frontier.enqueue(startTile, 0);
+    cameFrom.set(this._key(startTile), null);
+    costSoFar.set(this._key(startTile), 0);
+
+    let reached = false;
 
     while (!frontier.isEmpty()) {
       const current = frontier.dequeue();
-      
-      if (current === endTile) break;
-      
+      if (current === endTile) { reached = true; break; }
+
       for (const next of this.world.getNeighbors8(current)) {
         const newCost = costSoFar.get(this._key(current)) + this._cost(current, next);
-        const nextKey = this._key(next);
-        if (!costSoFar.has(nextKey) || newCost < costSoFar.get(nextKey)) {
-          costSoFar.set(nextKey, newCost);
+        const nk = this._key(next);
+        if (!costSoFar.has(nk) || newCost < costSoFar.get(nk)) {
+          costSoFar.set(nk, newCost);
           const priority = newCost + this._heuristic(next, endTile);
           frontier.enqueue(next, priority);
-          cameFrom.set(nextKey, current);
+          cameFrom.set(nk, current);
         }
       }
     }
 
+    if (!reached) return null;
+
+    // Reconstruct path
     const path = [];
-    let current = endTile;
-    while (current) {
-        path.push(current.center.clone());
-        const prevKey = this._key(cameFrom.get(this._key(current)));
-        // This is complex, simply find the tile from the map
-        current = cameFrom.get(this._key(current));
+    let cur = endTile;
+    while (cur) {
+      path.push(cur.center.clone());
+      cur = cameFrom.get(this._key(cur));
     }
     path.reverse();
-    
-    // ** THE FIX **: Allow single-step paths.
-    return path.length > 0 ? path : null;
+    return path.length > 1 ? path : null;
   }
 }
