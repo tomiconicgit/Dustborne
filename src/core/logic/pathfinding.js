@@ -10,58 +10,25 @@ class PriorityQueue {
   isEmpty() { return this.elements.length === 0; }
 }
 
-/**
- * A* over the world's tile grid.
- * - 8-way movement (N,S,E,W + diagonals)
- * - Octile heuristic
- * - Diagonal moves disallowed if it would "cut a corner" between two blocked tiles.
- */
 export class AStarPathfinder {
   constructor(world) {
     this.world = world;
-    this._map = world._tileMap; // grid key: `${gridX},${gridZ}` -> tile
-    this._TP = world.TILES_PER_CHUNK;
   }
 
-  _key(x, z) { return `${x},${z}`; }
-
-  _neighbors8(tile) {
-    const res = [];
-    const { gridX:x, gridZ:z } = tile;
-    const dirs = [
-      [ 1,  0], [-1,  0], [ 0,  1], [ 0, -1], // cardinal
-      [ 1,  1], [ 1, -1], [-1,  1], [-1, -1] // diagonals
-    ];
-
-    for (const [dx, dz] of dirs) {
-      const nx = x + dx, nz = z + dz;
-      const n = this._map.get(this._key(nx, nz));
-      if (!n || !n.isWalkable) continue;
-
-      // Block diagonal "corner cutting": both adjacent cardinals must be walkable
-      if (dx !== 0 && dz !== 0) {
-        const sideA = this._map.get(this._key(x + dx, z));
-        const sideB = this._map.get(this._key(x, z + dz));
-        if (!sideA?.isWalkable || !sideB?.isWalkable) continue;
-      }
-      res.push(n);
-    }
-    return res;
+  // ** THE FIX **: Create a stable, unique key for any tile in the world
+  _key(tile) {
+    if (!tile) return '';
+    return `${tile.chunk.chunkX},${tile.chunk.chunkZ}:${tile.localX},${tile.localZ}`;
   }
 
   _cost(a, b) {
-    const dx = Math.abs(a.gridX - b.gridX);
-    const dz = Math.abs(a.gridZ - b.gridZ);
-    // diagonal costs √2, straight costs 1
-    return (dx === 1 && dz === 1) ? Math.SQRT2 : 1;
+    const dx = Math.abs(a.center.x - b.center.x);
+    const dz = Math.abs(a.center.z - b.center.z);
+    return Math.sqrt(dx*dx + dz*dz); // Use Euclidean distance for cost
   }
 
   _heuristic(a, b) {
-    // Octile heuristic for 8-direction grids
-    const dx = Math.abs(a.gridX - b.gridX);
-    const dz = Math.abs(a.gridZ - b.gridZ);
-    const D = 1, D2 = Math.SQRT2;
-    return D * (dx + dz) + (D2 - 2 * D) * Math.min(dx, dz);
+    return a.center.distanceTo(b.center); // Use Euclidean distance for heuristic
   }
 
   findPath(startPos, endPos) {
@@ -74,41 +41,38 @@ export class AStarPathfinder {
 
     const cameFrom = new Map();
     const costSoFar = new Map();
-    const keyOf = t => `${t.gridX},${t.gridZ}`;
 
-    cameFrom.set(keyOf(startTile), null);
-    costSoFar.set(keyOf(startTile), 0);
+    const startKey = this._key(startTile);
+    cameFrom.set(startKey, null);
+    costSoFar.set(startKey, 0);
 
     while (!frontier.isEmpty()) {
       const current = frontier.dequeue();
-      const cKey = keyOf(current);
-
+      
       if (current === endTile) break;
-
-      for (const next of this._neighbors8(current)) {
-        const nKey = keyOf(next);
-        const newCost = costSoFar.get(cKey) + this._cost(current, next);
-        if (!costSoFar.has(nKey) || newCost < costSoFar.get(nKey)) {
-          costSoFar.set(nKey, newCost);
+      
+      // ** THE FIX **: Use the world's chunk-aware neighbor finding function
+      for (const next of this.world.getNeighbors8(current)) {
+        const newCost = costSoFar.get(this._key(current)) + this._cost(current, next);
+        const nextKey = this._key(next);
+        if (!costSoFar.has(nextKey) || newCost < costSoFar.get(nextKey)) {
+          costSoFar.set(nextKey, newCost);
           const priority = newCost + this._heuristic(next, endTile);
           frontier.enqueue(next, priority);
-          cameFrom.set(nKey, current);
+          cameFrom.set(nextKey, current);
         }
       }
     }
 
-    // Reconstruct
-    const endKey = keyOf(endTile);
-    if (!cameFrom.has(endKey)) return null;
-
-    let cur = endTile;
+    // Reconstruct path
     const path = [];
-    while (cur && cur !== startTile) {
-      path.push(cur.center.clone());
-      cur = cameFrom.get(keyOf(cur));
+    let current = endTile;
+    while (current) {
+        path.push(current.center.clone());
+        current = cameFrom.get(this._key(current));
     }
     path.reverse();
-    if (path.length === 0) path.push(endTile.center.clone());
-    return path;
+    
+    return path.length > 1 ? path : null;
   }
 }
