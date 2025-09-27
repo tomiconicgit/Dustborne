@@ -30,12 +30,15 @@ class AStarPathfinder {
     cameFrom.set(this._key(startTile), null);
     costSoFar.set(this._key(startTile), 0);
     let reached = false;
+    let goalNode = null;
+
     while (!frontier.isEmpty()) {
       const current = frontier.dequeue();
 
       // FIX: Compare tile coordinates/keys, not object references.
       if (this._key(current) === this._key(endTile)) {
         reached = true;
+        goalNode = current; // Store the actual goal node
         break;
       }
 
@@ -52,9 +55,13 @@ class AStarPathfinder {
       }
     }
     if (!reached) return null;
+
     const path = [];
-    let cur = endTile;
-    while (cur) { path.push(cur.center.clone()); cur = cameFrom.get(this._key(cur)); }
+    let cur = goalNode; // Start reconstruction from the actual goal node found
+    while (cur) {
+      path.push(cur.center.clone());
+      cur = cameFrom.get(this._key(cur));
+    }
     path.reverse();
     return path.length > 1 ? path : null;
   }
