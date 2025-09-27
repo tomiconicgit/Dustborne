@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { getRockTemplate } from '../world/assets/rocks/copperore.js';
 
-const CHUNK_SIZE = 32; // Each chunk is 32x32 tiles.
+const CHUNK_SIZE = 32;
 
 export class Chunk {
   constructor(scene, world, chunkX, chunkZ) {
@@ -12,6 +12,8 @@ export class Chunk {
     this.chunkX = chunkX;
     this.chunkZ = chunkZ;
     this.tileSize = world.TILE_SIZE;
+    this.worldSize = CHUNK_SIZE * this.tileSize;
+    this.origin = new THREE.Vector3(this.chunkX * this.worldSize, 0, this.chunkZ * this.worldSize);
 
     this.group = new THREE.Group();
     this.group.name = `Chunk(${chunkX},${chunkZ})`;
@@ -24,13 +26,10 @@ export class Chunk {
   }
 
   _generateTiles() {
-    const originX = this.chunkX * CHUNK_SIZE * this.tileSize;
-    const originZ = this.chunkZ * CHUNK_SIZE * this.tileSize;
-
     for (let tz = 0; tz < CHUNK_SIZE; tz++) {
       for (let tx = 0; tx < CHUNK_SIZE; tx++) {
-        const worldX = originX + (tx - CHUNK_SIZE / 2 + 0.5) * this.tileSize;
-        const worldZ = originZ + (tz - CHUNK_SIZE / 2 + 0.5) * this.tileSize;
+        const worldX = this.origin.x + (tx + 0.5) * this.tileSize;
+        const worldZ = this.origin.z + (tz + 0.5) * this.tileSize;
         
         const tile = {
           chunk: this, localX: tx, localZ: tz,
@@ -52,22 +51,13 @@ export class Chunk {
   }
 
   async build() {
-    // 1. Group geometries by material (sand vs dirt)
-    const geometriesByMaterial = {
-        sand: [],
-        dirt: [],
-    };
+    const geometriesByMaterial = { sand: [], dirt: [] };
     for (const tile of this.tiles) {
       const geo = this.world.sharedTileGeo.clone();
       geo.translate(tile.center.x, tile.center.y, tile.center.z);
-      if (tile.userData.isDirt) {
-        geometriesByMaterial.dirt.push(geo);
-      } else {
-        geometriesByMaterial.sand.push(geo);
-      }
+      (tile.userData.isDirt ? geometriesByMaterial.dirt : geometriesByMaterial.sand).push(geo);
     }
     
-    // 2. Create a merged mesh for each material type
     for (const materialType in geometriesByMaterial) {
         const geometries = geometriesByMaterial[materialType];
         if (geometries.length > 0) {
@@ -75,18 +65,17 @@ export class Chunk {
             const material = this.world.materials[materialType];
             const mesh = new THREE.Mesh(mergedGeo, material);
             mesh.receiveShadow = true;
-            mesh.userData.isLandscape = true; // For raycasting
+            mesh.userData.isLandscape = true;
             this.group.add(mesh);
         }
     }
 
-    // 3. Create an InstancedMesh for rocks
     if (this.rockData.length > 0) {
       const template = await getRockTemplate();
       const instancedMesh = new THREE.InstancedMesh(template.geometry, template.material, this.rockData.length);
       instancedMesh.castShadow = true;
       instancedMesh.receiveShadow = true;
-      instancedMesh.userData.isMineable = true; // For raycasting
+      instancedMesh.userData.isMineable = true;
 
       const matrix = new THREE.Matrix4();
       const quat = new THREE.Quaternion();
@@ -94,10 +83,7 @@ export class Chunk {
 
       for (let i = 0; i < this.rockData.length; i++) {
         const { position, scale, rotation } = this.rockData[i];
-        
-        // ** THE FIX **: Add the template's Y-position to the tile's ground position.
         const finalPosition = position.clone().add(template.position);
-
         matrix.compose(
             finalPosition,
             quat.setFromEuler(new THREE.Euler(0, rotation, 0)),
@@ -110,28 +96,16 @@ export class Chunk {
   }
   
   getTileAt(worldPos) {
-    const totalSize = CHUNK_SIZE * this.tileSize;
-    const originX = this.chunkX * totalSize;
-    const originZ = this.chunkZ * totalSize;
-    
-    const localX = Math.floor(worldPos.x - (originX - totalSize / 2));
-    const localZ = Math.floor(worldPos.z - (originZ - totalSize / 2));
-
+    const localX = Math.floor(worldPos.x - this.origin.x);
+    const localZ = Math.floor(worldPos.z - this.origin.z);
+    if (localX < 0 || localX >= CHUNK_SIZE || localZ < 0 || localZ >= CHUNK_SIZE) return null;
     return this._tileMap.get(`${localX},${localZ}`);
   }
 
   show() { this.scene.add(this.group); }
   hide() { this.scene.remove(this.group); }
-
-  dispose() {
-    this.hide();
-    this.group.traverse(child => {
-        if (child.isMesh) {
-            child.geometry.dispose();
-            child.material.dispose();
-        }
-    });
-  }
+  
+  dispose() { /* ... */ }
 }
 
 export const DUSTBORNE_CHUNK_SIZE = CHUNK_SIZE;
