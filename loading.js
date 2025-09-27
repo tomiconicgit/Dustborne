@@ -78,7 +78,193 @@ class LoadingManager {
   _wireGlobalErrorCapture() { window.addEventListener('error', (e) => { const where = e?.filename ? ` @ ${e.filename}:${e.lineno}:${e.colno}` : ''; this.log(`Error: ${e?.message || 'Unknown'}${where}`, 'error'); }); window.addEventListener('unhandledrejection', (e) => { const reason = e?.reason?.message || e?.reason || 'Unhandled promise rejection'; this.log(`UnhandledRejection: ${reason}`, 'error'); }); }
   _cacheDOMElements() { this.loadingScreen = document.getElementById('dustborne-loading-screen'); this.progressOuter = document.getElementById('dustborne-loading-bar-container'); this.progressBar = document.getElementById('dustborne-loading-bar'); this.percentEl = document.getElementById('dustborne-bar-label'); this.statusElement = document.getElementById('dustborne-loading-status'); this.startButton = document.getElementById('dustborne-start-button'); this.copyErrorsBtn = document.getElementById('dustborne-copy-errors-btn'); this.logContainer = document.getElementById('dustborne-log-container'); this.copyErrorsBtn.addEventListener('click', () => this._copyErrorsToClipboard()); }
   _createDOM() { document.body.insertAdjacentHTML('afterbegin', `<div id="dustborne-loading-screen"><div id="dustborne-loading-content"><h1 id="dustborne-loading-title">Dustborne</h1><div id="dustborne-loading-bar-container" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"><div id="dustborne-loading-bar"></div><span id="dustborne-bar-label">0%</span></div><p id="dustborne-loading-status">Initializing...</p><div id="dustborne-log-container"></div><div id="dustborne-loading-actions"><button id="dustborne-start-button" disabled aria-disabled="true">Start</button><button id="dustborne-copy-errors-btn">Copy Errors</button></div></div></div>`); }
-  _createStyles() { const s = document.createElement('style'); s.textContent = `...`; document.head.appendChild(s); }
+
+  /**
+   * NEW: All-in-one style block for a clean, modern loading screen.
+   */
+  _createStyles() {
+    const s = document.createElement('style');
+    s.textContent = `
+      :root {
+        --db-font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        --db-font-mono: ui-monospace, Menlo, Monaco, "Cascadia Mono", "Segoe UI Mono", "Roboto Mono", "Oxygen Mono", "Ubuntu Monospace", "Source Code Pro", "Fira Mono", "Droid Sans Mono", "Courier New", monospace;
+        
+        --db-bg: #1a1612;
+        --db-text-primary: #f5eeda;
+        --db-text-secondary: #c3b8a5;
+        --db-accent: #e88b33;
+        --db-accent-success: #64b964;
+        --db-accent-error: #c94a4a;
+        --db-border: rgba(245, 238, 218, 0.1);
+        --db-surface: rgba(26, 22, 18, 0.7);
+      }
+
+      #dustborne-loading-screen {
+        position: fixed;
+        inset: 0;
+        background-color: var(--db-bg);
+        z-index: 10000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: var(--db-font-sans);
+        color: var(--db-text-primary);
+        transition: opacity 1s ease-in-out, visibility 1s ease-in-out;
+        opacity: 1;
+        visibility: visible;
+      }
+
+      #dustborne-loading-screen.fade-out {
+        opacity: 0;
+        visibility: hidden;
+      }
+
+      #dustborne-loading-content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+        max-width: 480px;
+        padding: 24px;
+        box-sizing: border-box;
+        text-align: center;
+      }
+
+      #dustborne-loading-title {
+        font-size: 42px;
+        font-weight: 800;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        margin: 0 0 24px 0;
+        color: var(--db-text-primary);
+      }
+
+      #dustborne-loading-bar-container {
+        width: 100%;
+        height: 16px;
+        background-color: var(--db-surface);
+        border-radius: 8px;
+        border: 1px solid var(--db-border);
+        position: relative;
+        overflow: hidden;
+      }
+
+      #dustborne-loading-bar {
+        width: 0%;
+        height: 100%;
+        background-color: var(--db-accent);
+        border-radius: 7px;
+        transition: width 0.3s ease-out, background-color 0.3s ease;
+      }
+      
+      #dustborne-loading-bar.complete { background-color: var(--db-accent-success); }
+      #dustborne-loading-bar.error { background-color: var(--db-accent-error); }
+
+      #dustborne-bar-label {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        font-weight: bold;
+        color: #fff;
+        text-shadow: 0 0 3px rgba(0,0,0,.5);
+      }
+
+      #dustborne-loading-status {
+        margin: 12px 0;
+        font-size: 14px;
+        color: var(--db-text-secondary);
+        height: 20px; /* Reserve space to prevent layout shift */
+      }
+
+      #dustborne-log-container {
+        width: 100%;
+        height: 90px;
+        background: rgba(0,0,0,0.2);
+        border: 1px solid var(--db-border);
+        border-radius: 8px;
+        padding: 8px;
+        box-sizing: border-box;
+        overflow-y: auto;
+        font-family: var(--db-font-mono);
+        font-size: 11px;
+        text-align: left;
+        display: none; /* Hidden by default, shown when errors appear */
+      }
+      
+      #dustborne-copy-errors-btn.show ~ #dustborne-log-container {
+        display: block; /* Show log when copy button is shown */
+      }
+
+      #dustborne-log-container p { margin: 0; line-height: 1.5; }
+      .log-timestamp { color: var(--db-text-secondary); opacity: 0.6; }
+      .log-error { color: var(--db-accent-error); }
+      .log-success { color: var(--db-accent-success); }
+
+      #dustborne-loading-actions {
+        margin-top: 24px;
+        display: flex;
+        gap: 12px;
+      }
+
+      #dustborne-loading-actions button {
+        font-family: var(--db-font-sans);
+        border-radius: 8px;
+        border: 1px solid var(--db-border);
+        padding: 10px 18px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        opacity: 0;
+        transform: translateY(10px);
+        visibility: hidden;
+      }
+
+      #dustborne-start-button {
+        background-color: var(--db-text-primary);
+        color: var(--db-bg);
+        border-color: var(--db-text-primary);
+      }
+      #dustborne-start-button:disabled {
+        background-color: var(--db-surface);
+        color: var(--db-text-secondary);
+        border-color: var(--db-border);
+        cursor: not-allowed;
+      }
+      #dustborne-start-button.show {
+        opacity: 1;
+        transform: translateY(0);
+        visibility: visible;
+        transition: opacity 0.4s ease 0.2s, transform 0.4s ease 0.2s;
+      }
+      #dustborne-start-button:not(:disabled):hover {
+        opacity: 0.9;
+      }
+      #dustborne-start-button.btn-pressed {
+        transform: scale(0.95);
+        opacity: 0.8;
+      }
+      
+      #dustborne-copy-errors-btn {
+        background-color: transparent;
+        color: var(--db-text-secondary);
+      }
+      #dustborne-copy-errors-btn.show {
+        opacity: 1;
+        transform: translateY(0);
+        visibility: visible;
+        transition: opacity 0.4s ease 0.2s, transform 0.4s ease 0.2s;
+      }
+      #dustborne-copy-errors-btn:hover {
+        background-color: var(--db-surface);
+        color: var(--db-text-primary);
+      }
+    `;
+    document.head.appendChild(s);
+  }
 }
 const loadingManager = new LoadingManager();
 export default loadingManager;
