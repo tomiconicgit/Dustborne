@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import Viewport from './viewport.js';
 import Camera, { CameraController } from './camera.js';
 import Lighting from './lighting.js';
-import Character from './logic/character.js';
+// --- REMOVED: Character is no longer created here ---
 import CharacterMovement from './logic/charactermovement.js';
 import Sky from '../world/assets/sky/sky.js';
 import { register as registerMining } from '../world/chunks/miningarea.js';
@@ -14,141 +14,53 @@ import { Chunk, DUSTBORNE_CHUNK_SIZE } from './chunk.js';
 import Navbar from './ui/navbar.js';
 import InventoryPanel from './ui/inventory.js';
 
+// --- WorldEngine class is UNCHANGED ---
 class WorldEngine {
   constructor(scene) {
     this.scene = scene;
-
     this.TILE_SIZE = 1;
-    this.CHUNK_GRID_SIZE = DUSTBORNE_CHUNK_SIZE; // tiles per chunk (32)
+    this.CHUNK_GRID_SIZE = DUSTBORNE_CHUNK_SIZE;
     this.UNITS_PER_CHUNK = this.CHUNK_GRID_SIZE * this.TILE_SIZE;
-
     this.chunks = new Map();
     this.activeChunks = new Map();
-    this.viewDistance = 2; // 5x5 around player
-
+    this.viewDistance = 2;
     this.sharedTileGeo = new THREE.PlaneGeometry(this.TILE_SIZE, this.TILE_SIZE).rotateX(-Math.PI / 2);
-    this.materials = {
-      sand: new THREE.MeshStandardMaterial({ color: '#C2B280', roughness: 1, metalness: 0 }),
-      dirt: new THREE.MeshStandardMaterial({ color: '#8b5a2b', roughness: 1, metalness: 0 }),
-    };
+    this.materials = { sand: new THREE.MeshStandardMaterial({ color: '#C2B280', roughness: 1, metalness: 0 }), dirt: new THREE.MeshStandardMaterial({ color: '#8b5a2b', roughness: 1, metalness: 0 }), };
+    // --- Omit the rest of the class for brevity, it's unchanged ---
   }
-
   getChunkKey(chunkX, chunkZ) { return `${chunkX},${chunkZ}`; }
-
-  async getChunk(chunkX, chunkZ) {
-    const key = this.getChunkKey(chunkX, chunkZ);
-    if (this.chunks.has(key)) return this.chunks.get(key);
-
-    const chunk = new Chunk(this.scene, this, chunkX, chunkZ);
-    this.chunks.set(key, chunk);
-
-    if (chunkX === 0 && chunkZ === 0) registerMining(chunk);
-
-    await chunk.build();
-    return chunk;
-  }
-
-  update(playerPosition) {
-    const uPerChunk = this.UNITS_PER_CHUNK;
-    const pCX = Math.floor((playerPosition.x + uPerChunk * 0.5) / uPerChunk);
-    const pCZ = Math.floor((playerPosition.z + uPerChunk * 0.5) / uPerChunk);
-
-    const required = new Map();
-    for (let x = pCX - this.viewDistance; x <= pCX + this.viewDistance; x++) {
-      for (let z = pCZ - this.viewDistance; z <= pCZ + this.viewDistance; z++) {
-        required.set(this.getChunkKey(x, z), { x, z });
-      }
-    }
-
-    for (const [key, chunk] of this.activeChunks.entries()) {
-      if (!required.has(key)) {
-        chunk.hide();
-        this.activeChunks.delete(key);
-      }
-    }
-
-    for (const [key, { x, z }] of required.entries()) {
-      if (!this.activeChunks.has(key)) {
-        this.getChunk(x, z).then(chunk => {
-          if (!this.activeChunks.has(key)) {
-            chunk.show();
-            this.activeChunks.set(key, chunk);
-          }
-        });
-      }
-    }
-  }
-
-  getTileAt(worldPos) {
-    const uPerChunk = this.UNITS_PER_CHUNK;
-    const cX = Math.floor((worldPos.x + uPerChunk * 0.5) / uPerChunk);
-    const cZ = Math.floor((worldPos.z + uPerChunk * 0.5) / uPerChunk);
-    const chunk = this.chunks.get(this.getChunkKey(cX, cZ));
-    return chunk ? chunk.getTileAt(worldPos) : null;
-  }
-
-  getNeighbors8(tile) {
-    if (!tile) return [];
-    const neighbors = [];
-    const step = this.TILE_SIZE;
-
-    for (let dx = -1; dx <= 1; dx++) {
-      for (let dz = -1; dz <= 1; dz++) {
-        if (dx === 0 && dz === 0) continue;
-
-        const neighborPos = tile.center.clone().add(new THREE.Vector3(dx * step, 0, dz * step));
-        const neighbor = this.getTileAt(neighborPos);
-        if (!neighbor || !neighbor.isWalkable) continue;
-
-        if (dx !== 0 && dz !== 0) {
-          const sideA = this.getTileAt(tile.center.clone().add(new THREE.Vector3(dx * step, 0, 0)));
-          const sideB = this.getTileAt(tile.center.clone().add(new THREE.Vector3(0, 0, dz * step)));
-          if (!sideA?.isWalkable || !sideB?.isWalkable) continue;
-        }
-        neighbors.push(neighbor);
-      }
-    }
-    return neighbors;
-  }
+  async getChunk(chunkX, chunkZ) { const key = this.getChunkKey(chunkX, chunkZ); if (this.chunks.has(key)) return this.chunks.get(key); const chunk = new Chunk(this.scene, this, chunkX, chunkZ); this.chunks.set(key, chunk); if (chunkX === 0 && chunkZ === 0) registerMining(chunk); await chunk.build(); return chunk; }
+  update(playerPosition) { const uPerChunk = this.UNITS_PER_CHUNK; const pCX = Math.floor((playerPosition.x + uPerChunk * 0.5) / uPerChunk); const pCZ = Math.floor((playerPosition.z + uPerChunk * 0.5) / uPerChunk); const required = new Map(); for (let x = pCX - this.viewDistance; x <= pCX + this.viewDistance; x++) { for (let z = pCZ - this.viewDistance; z <= pCZ + this.viewDistance; z++) { required.set(this.getChunkKey(x, z), { x, z }); } } for (const [key, chunk] of this.activeChunks.entries()) { if (!required.has(key)) { chunk.hide(); this.activeChunks.delete(key); } } for (const [key, { x, z }] of required.entries()) { if (!this.activeChunks.has(key)) { this.getChunk(x, z).then(chunk => { if (!this.activeChunks.has(key)) { chunk.show(); this.activeChunks.set(key, chunk); } }); } } }
+  getTileAt(worldPos) { const uPerChunk = this.UNITS_PER_CHUNK; const cX = Math.floor((worldPos.x + uPerChunk * 0.5) / uPerChunk); const cZ = Math.floor((worldPos.z + uPerChunk * 0.5) / uPerChunk); const chunk = this.chunks.get(this.getChunkKey(cX, cZ)); return chunk ? chunk.getTileAt(worldPos) : null; }
+  getNeighbors8(tile) { if (!tile) return []; const neighbors = []; const step = this.TILE_SIZE; for (let dx = -1; dx <= 1; dx++) { for (let dz = -1; dz <= 1; dz++) { if (dx === 0 && dz === 0) continue; const neighborPos = tile.center.clone().add(new THREE.Vector3(dx * step, 0, dz * step)); const neighbor = this.getTileAt(neighborPos); if (!neighbor || !neighbor.isWalkable) continue; if (dx !== 0 && dz !== 0) { const sideA = this.getTileAt(tile.center.clone().add(new THREE.Vector3(dx * step, 0, 0))); const sideB = this.getTileAt(tile.center.clone().add(new THREE.Vector3(0, 0, dz * step))); if (!sideA?.isWalkable || !sideB?.isWalkable) continue; } neighbors.push(neighbor); } } return neighbors; }
 }
 
+
+// --- CHANGED: prewarm is now much simpler ---
 export async function prewarm() {
   const scene = new THREE.Scene();
-  const lighting = new Lighting(scene);
-  new Sky(scene, lighting);
-
+  new Lighting(scene);
   const camera = new Camera();
   const world = new WorldEngine(scene);
+  new Sky(scene);
 
-  const character = new Character(scene);
-  await character.init(new THREE.Vector3(0, 0, 2));
-  camera.setTarget(character.object);
-
-  // CHANGED: Pre-warm the movement controller AND animations to prevent T-pose.
-  const movement = new CharacterMovement({ camera, player: character, world });
-  await movement.prewarmAnimations();
-
-  // Load initial chunks
-  const uPerChunk = world.UNITS_PER_CHUNK;
-  const pCX = Math.floor((character.object.position.x + uPerChunk * 0.5) / uPerChunk);
-  const pCZ = Math.floor((character.object.position.z + uPerChunk * 0.5) / uPerChunk);
-
+  // Pre-load the initial set of chunks around the spawn point (0,0)
   const jobs = [];
-  for (let x = pCX - world.viewDistance; x <= pCX + world.viewDistance; x++) {
-    for (let z = pCZ - world.viewDistance; z <= pCZ + world.viewDistance; z++) {
+  for (let x = -world.viewDistance; x <= world.viewDistance; x++) {
+    for (let z = -world.viewDistance; z <= world.viewDistance; z++) {
       jobs.push(world.getChunk(x, z));
     }
   }
   await Promise.all(jobs);
-  world.update(character.object.position);
 
-  // CHANGED: Pass the fully pre-warmed movement controller.
-  return { scene, camera, world, character, movement };
+  // We no longer return character or movement, just the world essentials
+  return { scene, camera, world };
 }
 
+
+// --- CHANGED: show function is now much simpler ---
 export function show({ rootId = 'game-root', prewarmedState }) {
-  // CHANGED: Get the pre-warmed movement controller from the state.
-  const { scene, camera, world, character, movement } = prewarmedState;
+  const { scene, camera, world } = prewarmedState;
 
   let root = document.getElementById(rootId) || document.createElement('div');
   root.id = rootId;
@@ -162,58 +74,30 @@ export function show({ rootId = 'game-root', prewarmedState }) {
   viewport.setCamera(camera.threeCamera);
   viewport.start();
 
-  // Initialize controllers with the viewport's DOM element
   new CameraController(viewport.domElement, camera);
-  movement.setDomElement(viewport.domElement); // Connect input listeners now
-  movement.startTick(); // Start the animation/update loop
-
   const devtools = new DevTools(scene, world, root);
 
-  // --- UI wiring ---
-  // ADDED: State management for UI tabs.
+  // --- THIS IS THE NEW, SIMPLIFIED SETUP ---
+  // 1. Create the all-in-one controller
+  const characterController = new CharacterMovement(viewport.domElement, camera, world);
+  // 2. Tell it to initialize itself. It will handle the rest.
+  characterController.init();
+  
+  // --- UI wiring (unchanged) ---
   let activeTab = 'inventory';
-  
   const inventory = new InventoryPanel({ parent: document.body });
-  
-  const handleTabClick = (tabName) => {
-    // If the clicked tab is already active, do nothing.
-    if (activeTab === tabName) {
-      return;
-    }
-    
-    // Update state and UI
-    activeTab = tabName;
-    navbar.setActive(tabName);
-
-    // Show/hide panels based on the new active tab
-    if (tabName === 'inventory') {
-      inventory.open();
-    } else {
-      inventory.close();
-    }
-    // Future panels would go here:
-    // if (tabName === 'skills') skillsPanel.open(); else skillsPanel.close();
-  };
-
-  const navbar = new Navbar({
-    parent: document.body,
-    hooks: {
-      onInventory: () => handleTabClick('inventory'),
-      onSkills:    () => handleTabClick('skills'),
-      onMissions:  () => handleTabClick('missions'),
-      onMap:       () => handleTabClick('map'),
-    }
-  });
-  
-  // Set initial UI state
+  const handleTabClick = (tabName) => { if (activeTab === tabName) return; activeTab = tabName; navbar.setActive(tabName); if (tabName === 'inventory') { inventory.open(); } else { inventory.close(); } };
+  const navbar = new Navbar({ parent: document.body, hooks: { onInventory: () => handleTabClick('inventory'), onSkills: () => handleTabClick('skills'), onMissions: () => handleTabClick('missions'), onMap: () => handleTabClick('map'), } });
   navbar.setActive('inventory');
   inventory.attachToNavbar(navbar);
 
-  // Main game loop for non-animation logic (like chunk loading)
+  // Main game loop now only updates world chunks and devtools
   const step = () => {
-    if (character.object) {
-      world.update(character.object.position);
-      devtools.update(character.object.position);
+    // We get the player object from the controller when needed
+    const playerObject = characterController.playerObject;
+    if (playerObject) {
+      world.update(playerObject.position);
+      devtools.update(playerObject.position);
     }
     requestAnimationFrame(step);
   };
@@ -224,7 +108,7 @@ export function show({ rootId = 'game-root', prewarmedState }) {
   onResize();
 
   window.Dustborne = Object.assign(window.Dustborne || {}, {
-    world, movement, devtools, scene, camera, viewport,
+    world, characterController, devtools, scene, camera, viewport,
     ui: { navbar, inventory }
   });
 }
