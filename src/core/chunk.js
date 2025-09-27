@@ -1,10 +1,9 @@
 // file: src/core/chunk.js
 import * as THREE from 'three';
-// The FIX is here: We import the specific 'mergeGeometries' function
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { getRockTemplate } from '../world/assets/rocks/copperore.js';
 
-const CHUNK_SIZE = 32; // Each chunk is 32x32 tiles. A smaller, more manageable size.
+const CHUNK_SIZE = 32; // Each chunk is 32x32 tiles.
 
 export class Chunk {
   constructor(scene, world, chunkX, chunkZ) {
@@ -19,30 +18,24 @@ export class Chunk {
 
     this.tiles = [];
     this._tileMap = new Map();
-    this.rockData = []; // To store rock positions before creating instances
-
-    this.groundMesh = null;
-    this.rockInstancedMesh = null;
+    this.rockData = [];
 
     this._generateTiles();
   }
 
-  // Generate the tile data for this chunk only
   _generateTiles() {
     const originX = this.chunkX * CHUNK_SIZE * this.tileSize;
     const originZ = this.chunkZ * CHUNK_SIZE * this.tileSize;
 
     for (let tz = 0; tz < CHUNK_SIZE; tz++) {
       for (let tx = 0; tx < CHUNK_SIZE; tx++) {
-        const worldX = originX + (tx + 0.5) * this.tileSize;
-        const worldZ = originZ + (tz + 0.5) * this.tileSize;
+        const worldX = originX + (tx - CHUNK_SIZE / 2 + 0.5) * this.tileSize;
+        const worldZ = originZ + (tz - CHUNK_SIZE / 2 + 0.5) * this.tileSize;
         
         const tile = {
-          chunk: this,
-          localX: tx, localZ: tz,
+          chunk: this, localX: tx, localZ: tz,
           center: new THREE.Vector3(worldX, 0, worldZ),
-          isWalkable: true,
-          userData: {}
+          isWalkable: true, userData: {}
         };
         this.tiles.push(tile);
         this._tileMap.set(`${tx},${tz}`, tile);
@@ -50,7 +43,6 @@ export class Chunk {
     }
   }
   
-  // Called by content spawners (e.g., miningarea.js) to add rocks
   addRock(localX, localZ, scale = 1.0, rotation = 0) {
       const tile = this._tileMap.get(`${localX},${localZ}`);
       if (tile) {
@@ -59,67 +51,87 @@ export class Chunk {
       }
   }
 
-  // Finalizes the chunk's geometry after all content has been defined
   async build() {
-    // 1. Merge all ground tile geometries into one mesh
-    const groundGeometries = [];
+    // 1. Group geometries by material (sand vs dirt)
+    const geometriesByMaterial = {
+        sand: [],
+        dirt: [],
+    };
     for (const tile of this.tiles) {
       const geo = this.world.sharedTileGeo.clone();
-      // Here you can apply different colors based on tile.userData (e.g., isDirt)
       geo.translate(tile.center.x, tile.center.y, tile.center.z);
-      groundGeometries.push(geo);
+      if (tile.userData.isDirt) {
+        geometriesByMaterial.dirt.push(geo);
+      } else {
+        geometriesByMaterial.sand.push(geo);
+      }
     }
     
-    if (groundGeometries.length > 0) {
-      // The FIX is here: We call the function directly
-      const mergedGround = mergeGeometries(groundGeometries);
-      this.groundMesh = new THREE.Mesh(mergedGround, this.world.sharedGroundMaterial);
-      this.groundMesh.receiveShadow = true;
-      this.group.add(this.groundMesh);
+    // 2. Create a merged mesh for each material type
+    for (const materialType in geometriesByMaterial) {
+        const geometries = geometriesByMaterial[materialType];
+        if (geometries.length > 0) {
+            const mergedGeo = mergeGeometries(geometries);
+            const material = this.world.materials[materialType];
+            const mesh = new THREE.Mesh(mergedGeo, material);
+            mesh.receiveShadow = true;
+            mesh.userData.isLandscape = true; // For raycasting
+            this.group.add(mesh);
+        }
     }
 
-    // 2. Create an InstancedMesh for all rocks in this chunk
+    // 3. Create an InstancedMesh for rocks
     if (this.rockData.length > 0) {
       const template = await getRockTemplate();
-      this.rockInstancedMesh = new THREE.InstancedMesh(template.geometry, template.material, this.rockData.length);
-      this.rockInstancedMesh.castShadow = true;
-      this.rockInstancedMesh.receiveShadow = true;
+      const instancedMesh = new THREE.InstancedMesh(template.geometry, template.material, this.rockData.length);
+      instancedMesh.castShadow = true;
+      instancedMesh.receiveShadow = true;
+      instancedMesh.userData.isMineable = true; // For raycasting
 
       const matrix = new THREE.Matrix4();
+      const quat = new THREE.Quaternion();
+      const scaleVec = new THREE.Vector3();
+
       for (let i = 0; i < this.rockData.length; i++) {
         const { position, scale, rotation } = this.rockData[i];
+        
+        // ** THE FIX **: Add the template's Y-position to the tile's ground position.
+        const finalPosition = position.clone().add(template.position);
+
         matrix.compose(
-            position,
-            new THREE.Quaternion().setFromEuler(new THREE.Euler(0, rotation, 0)),
-            new THREE.Vector3(scale, scale, scale)
+            finalPosition,
+            quat.setFromEuler(new THREE.Euler(0, rotation, 0)),
+            scaleVec.set(scale, scale, scale)
         );
-        this.rockInstancedMesh.setMatrixAt(i, matrix);
+        instancedMesh.setMatrixAt(i, matrix);
       }
-      this.group.add(this.rockInstancedMesh);
+      this.group.add(instancedMesh);
     }
   }
   
   getTileAt(worldPos) {
-    const localX = Math.floor((worldPos.x - this.chunkX * CHUNK_SIZE) / this.tileSize);
-    const localZ = Math.floor((worldPos.z - this.chunkZ * CHUNK_SIZE) / this.tileSize);
+    const totalSize = CHUNK_SIZE * this.tileSize;
+    const originX = this.chunkX * totalSize;
+    const originZ = this.chunkZ * totalSize;
+    
+    const localX = Math.floor(worldPos.x - (originX - totalSize / 2));
+    const localZ = Math.floor(worldPos.z - (originZ - totalSize / 2));
+
     return this._tileMap.get(`${localX},${localZ}`);
   }
 
-  show() {
-    this.scene.add(this.group);
-  }
-
-  hide() {
-    this.scene.remove(this.group);
-  }
+  show() { this.scene.add(this.group); }
+  hide() { this.scene.remove(this.group); }
 
   dispose() {
     this.hide();
-    // Dispose all geometries and materials to prevent memory leaks
-    this.groundMesh?.geometry.dispose();
-    this.rockInstancedMesh?.geometry.dispose();
+    this.group.traverse(child => {
+        if (child.isMesh) {
+            child.geometry.dispose();
+            child.material.dispose();
+        }
+    });
   }
 }
 
-// Export chunk size for other modules to use
 export const DUSTBORNE_CHUNK_SIZE = CHUNK_SIZE;
