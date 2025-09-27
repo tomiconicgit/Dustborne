@@ -125,7 +125,7 @@ export default class NavigationBar {
         bottom: 0;
         left: 0;
         right: 0;
-        overflow-y: auto;
+        overflow-y: hidden;
       }
       .db-panel {
         padding: 16px;
