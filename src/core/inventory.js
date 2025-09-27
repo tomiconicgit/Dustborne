@@ -37,6 +37,6 @@ export default class Inventory {
     container.appendChild(gridContainer);
   }
 
-  show() { this.element.style.display = 'block'; }
+  show() { this.element.style.display = 'flex'; } // ✨ FIX: Changed 'block' to 'flex'
   hide() { this.element.style.display = 'none'; }
 }
