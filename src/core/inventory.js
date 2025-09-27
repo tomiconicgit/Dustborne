@@ -20,7 +20,7 @@ export default class Inventory {
       gap: 8px;
       width: 100%;
       max-width: 400px;
-      margin: 0 auto;
+      max-height: 100%;
     `;
 
     const totalSlots = 20;
