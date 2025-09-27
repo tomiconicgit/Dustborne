@@ -10,6 +10,8 @@ import { register as registerMining } from '../world/chunks/miningarea.js';
 import DevTools from './devtools.js';
 import { Chunk, DUSTBORNE_CHUNK_SIZE } from './chunk.js';
 
+const CHUNK_WORLD_SIZE = DUSTBORNE_CHUNK_SIZE; // World size of a chunk (32 units)
+
 class WorldEngine {
   constructor(scene) {
     this.scene = scene;
@@ -42,8 +44,8 @@ class WorldEngine {
   }
   
   update(playerPosition) {
-    const pCX = Math.floor(playerPosition.x / this.CHUNK_GRID_SIZE + 0.5);
-    const pCZ = Math.floor(playerPosition.z / this.CHUNK_GRID_SIZE + 0.5);
+    const pCX = Math.floor(playerPosition.x / CHUNK_WORLD_SIZE);
+    const pCZ = Math.floor(playerPosition.z / CHUNK_WORLD_SIZE);
 
     const requiredChunks = new Map();
     for (let x = pCX - this.viewDistance; x <= pCX + this.viewDistance; x++) {
@@ -72,8 +74,8 @@ class WorldEngine {
   }
 
   getTileAt(worldPos) {
-      const cX = Math.floor(worldPos.x / this.CHUNK_GRID_SIZE + 0.5);
-      const cZ = Math.floor(worldPos.z / this.CHUNK_GRID_SIZE + 0.5);
+      const cX = Math.floor(worldPos.x / CHUNK_WORLD_SIZE);
+      const cZ = Math.floor(worldPos.z / CHUNK_WORLD_SIZE);
       const chunk = this.chunks.get(this.getChunkKey(cX, cZ));
       return chunk ? chunk.getTileAt(worldPos) : null;
   }
@@ -110,8 +112,8 @@ export async function prewarm() {
   await character.init(new THREE.Vector3(0, 0, 2));
   camera.setTarget(character.object);
   
-  const pCX = Math.floor(character.object.position.x / world.CHUNK_GRID_SIZE + 0.5);
-  const pCZ = Math.floor(character.object.position.z / world.CHUNK_GRID_SIZE + 0.5);
+  const pCX = Math.floor(character.object.position.x / CHUNK_WORLD_SIZE);
+  const pCZ = Math.floor(character.object.position.z / CHUNK_WORLD_SIZE);
   const promises = [];
   for (let x = pCX - world.viewDistance; x <= pCX + world.viewDistance; x++) {
       for (let z = pCZ - world.viewDistance; z <= pCZ + world.viewDistance; z++) {
@@ -121,11 +123,15 @@ export async function prewarm() {
   await Promise.all(promises);
   world.update(character.object.position);
 
-  return { scene, camera, world, character };
+  // Return the movement controller after pre-loading its animations
+  const movement = new CharacterMovement(null, { scene }, camera, character, world);
+  await movement.initAnimations();
+
+  return { scene, camera, world, character, movement };
 }
 
 export function show({ rootId = 'game-root', prewarmedState }) {
-  const { scene, camera, world, character } = prewarmedState;
+  const { scene, camera, world, character, movement } = prewarmedState;
   let root = document.getElementById(rootId) || document.createElement('div');
   root.id = rootId;
   document.body.appendChild(root);
@@ -137,10 +143,9 @@ export function show({ rootId = 'game-root', prewarmedState }) {
   viewport.setCamera(camera.threeCamera);
   viewport.start();
 
+  // Connect controllers to the viewport
+  movement.connect(viewport.domElement);
   new CameraController(viewport.domElement, camera);
-  
-  // ** THE FIX **: Removed obsolete 'null' parameter and passed 'world' correctly.
-  const movement = new CharacterMovement(viewport.domElement, { scene }, camera, character, world);
   const devtools = new DevTools(scene, world, root);
   
   const step = () => {
@@ -151,8 +156,10 @@ export function show({ rootId = 'game-root', prewarmedState }) {
     requestAnimationFrame(step);
   };
   requestAnimationFrame(step);
+  
   const onResize = () => { camera.handleResize(); viewport._resize(); };
   window.addEventListener('resize', onResize, { passive: true });
   onResize();
+
   window.Dustborne = Object.assign(window.Dustborne || {}, { world, movement, devtools, scene, camera, viewport });
 }
