@@ -16,14 +16,14 @@ export default class Inventory {
     gridContainer.style.cssText = `
       display: grid;
       grid-template-columns: repeat(5, 1fr);
-      grid-template-rows: repeat(4, 1fr);
+      grid-template-rows: repeat(3, 1fr);
       gap: 8px;
-      width: 100%;
+      width: 95%;
       max-width: 400px;
-      max-height: 100%;
+      max-height: 95%;
     `;
 
-    const totalSlots = 20;
+    const totalSlots = 15;
     for (let i = 0; i < totalSlots; i++) {
       const slot = document.createElement('div');
       slot.style.cssText = `
