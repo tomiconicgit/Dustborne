@@ -138,9 +138,9 @@ export default class DevTools {
   }
 
   clear() {
-    // Clear all children from the main group (lines, X's, and labels group)
-    while (this.group.children.length) {
-      this.group.remove(this.group.children[0]);
+    // A robust way to clear all children from a group
+    for (let i = this.group.children.length - 1; i >= 0; i--) {
+        this.group.remove(this.group.children[i]);
     }
 
     // Dispose cached materials and textures
@@ -192,6 +192,10 @@ export default class DevTools {
       const xLines = new THREE.LineSegments(xGeom, xMat);
       this.group.add(xLines);
     }
+    
+    // ** THE FIX **
+    // Ensure the labelsGroup (which is managed by update()) is part of the main group.
+    this.group.add(this.labelsGroup);
   }
 
   dispose() {
