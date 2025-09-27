@@ -10,6 +10,13 @@ export default class Engine {
       { name: 'Camera', path: './src/core/camera.js' },
       { name: 'Sky', path: './src/world/assets/sky/sky.js' },
 
+      // UI System
+      { name: 'NavigationBar', path: './src/core/navigationbar.js' },
+      { name: 'Inventory', path: './src/core/inventory.js' },
+      { name: 'SkillLevels', path: './src/core/skilllevels.js' },
+      { name: 'WorldMap', path: './src/core/worldmap.js' },
+      { name: 'Missions', path: './src/core/missions.js' },
+
       // World Generation
       { name: 'ChunkManager', path: './src/world/chunks/chunkmanager.js' },
       { name: 'MiningArea', path: './src/world/chunks/miningarea.js' },
@@ -31,6 +38,9 @@ export default class Engine {
       { path: './src/core/camera.js', startFunction: 'create' },
       { path: './src/core/lighting.js', startFunction: 'create' },
       { path: './src/world/assets/sky/sky.js', startFunction: 'create' },
+
+      // Create the UI system
+      { path: './src/core/navigationbar.js', startFunction: 'create' },
       
       // Initialize world systems (now async to preload assets)
       { path: './src/world/chunks/chunkmanager.js', startFunction: 'create' },
