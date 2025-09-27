@@ -15,20 +15,17 @@ export class AStarPathfinder {
     this.world = world;
   }
 
-  // ** THE FIX **: Create a stable, unique key for any tile in the world
   _key(tile) {
     if (!tile) return '';
     return `${tile.chunk.chunkX},${tile.chunk.chunkZ}:${tile.localX},${tile.localZ}`;
   }
 
   _cost(a, b) {
-    const dx = Math.abs(a.center.x - b.center.x);
-    const dz = Math.abs(a.center.z - b.center.z);
-    return Math.sqrt(dx*dx + dz*dz); // Use Euclidean distance for cost
+    return a.center.distanceTo(b.center);
   }
 
   _heuristic(a, b) {
-    return a.center.distanceTo(b.center); // Use Euclidean distance for heuristic
+    return a.center.distanceTo(b.center);
   }
 
   findPath(startPos, endPos) {
@@ -51,7 +48,6 @@ export class AStarPathfinder {
       
       if (current === endTile) break;
       
-      // ** THE FIX **: Use the world's chunk-aware neighbor finding function
       for (const next of this.world.getNeighbors8(current)) {
         const newCost = costSoFar.get(this._key(current)) + this._cost(current, next);
         const nextKey = this._key(next);
@@ -64,15 +60,17 @@ export class AStarPathfinder {
       }
     }
 
-    // Reconstruct path
     const path = [];
     let current = endTile;
     while (current) {
         path.push(current.center.clone());
+        const prevKey = this._key(cameFrom.get(this._key(current)));
+        // This is complex, simply find the tile from the map
         current = cameFrom.get(this._key(current));
     }
     path.reverse();
     
-    return path.length > 1 ? path : null;
+    // ** THE FIX **: Allow single-step paths.
+    return path.length > 0 ? path : null;
   }
 }
