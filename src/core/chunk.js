@@ -46,12 +46,12 @@ export class Chunk {
   }
 
   /**
-   * Add a rock instance on a tile with optional authored per-instance Y offset.
+   * Add a rock instance on a tile with optional per-instance Y offset.
    * @param {number} localX
    * @param {number} localZ
-   * @param {number} scale        default 1.0
-   * @param {number} rotation     radians, yaw around Y
-   * @param {number} yOffset      extra Y offset (meters) from your editor (default 0)
+   * @param {number} scale=1
+   * @param {number} rotation=0 (radians)
+   * @param {number} yOffset=0 (meters)
    */
   addRock(localX, localZ, scale = 1.0, rotation = 0, yOffset = 0) {
     const tile = this._tileMap.get(`${localX},${localZ}`);
@@ -62,7 +62,7 @@ export class Chunk {
   }
 
   async build() {
-    // Ground: merge per material
+    // 1) Ground: merge per material to minimize draw calls
     const buckets = { sand: [], dirt: [] };
     for (const tile of this.tiles) {
       const g = this.world.sharedTileGeo.clone();
@@ -77,11 +77,11 @@ export class Chunk {
       const mat = this.world.materials[key];
       const mesh = new THREE.Mesh(merged, mat);
       mesh.receiveShadow = true;
-      mesh.userData.isLandscape = true; // raycast filter for taps
+      mesh.userData.isLandscape = true; // used by raycaster for tap-to-move
       this.group.add(mesh);
     }
 
-    // Rocks via InstancedMesh, preserving authored local transform AND per-instance yOffset
+    // 2) Rocks: use BAKED geometry (authored TRS already applied)
     if (this.rockData.length > 0) {
       const template = await getRockTemplate();
       const imesh = new THREE.InstancedMesh(template.geometry, template.material, this.rockData.length);
@@ -94,22 +94,11 @@ export class Chunk {
       const s = new THREE.Vector3();
 
       for (let i = 0; i < this.rockData.length; i++) {
-        const { position, scale, rotation, yOffset = 0 } = this.rockData[i];
+        const { position, scale = 1, rotation = 0, yOffset = 0 } = this.rockData[i];
+        const pos = new THREE.Vector3(position.x, position.y + yOffset, position.z);
 
-        const pos = position.clone();
-        pos.y += yOffset; // ← respect the per-instance Y you authored
-
-        m.compose(
-          pos,
-          q.setFromEuler(new THREE.Euler(0, rotation, 0)),
-          s.set(scale, scale, scale)
-        );
-
-        // Apply the mesh's authored LOCAL transform (includes your editor Y)
-        if (template.localMatrix) {
-          m.multiply(template.localMatrix);
-        }
-
+        // Per-instance placement only (authoring transform is already baked)
+        m.compose(pos, q.setFromEuler(new THREE.Euler(0, rotation, 0)), s.set(scale, scale, scale));
         imesh.setMatrixAt(i, m);
       }
       this.group.add(imesh);
