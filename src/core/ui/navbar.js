@@ -70,14 +70,19 @@ export default class Navbar {
         --dbui-shadow: 0 12px 30px rgba(0,0,0,.45);
       }
 
+      /* CHANGED: Navbar is now full-width and fixed to the absolute bottom. */
       .dbui-nav{
         position: fixed;
-        bottom: calc(env(safe-area-inset-bottom) + 10px);
-        left: 50%;
-        transform: translateX(-50%);
-        width: min(90vw, 560px);           /* narrower so it never hits the edge */
-        height: 50px;                       /* slightly shorter */
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: 50px;
         padding: 4px;
+        /* ADDED: Safe area padding for iPhone */
+        padding-left: calc(env(safe-area-inset-left) + 4px);
+        padding-right: calc(env(safe-area-inset-right) + 4px);
+        padding-bottom: calc(env(safe-area-inset-bottom) + 4px);
+        box-sizing: border-box;
         display: grid;
         grid-template-columns: repeat(4, 1fr);
         gap: 6px;
@@ -85,8 +90,8 @@ export default class Navbar {
         background: var(--dbui-bg);
         backdrop-filter: blur(14px) saturate(1.2);
         -webkit-backdrop-filter: blur(14px) saturate(1.2);
-        border: 1px solid var(--dbui-stroke);
-        border-radius: 14px;
+        border-top: 1px solid var(--dbui-stroke); /* CHANGED */
+        border-radius: 0; /* CHANGED */
         box-shadow: var(--dbui-shadow);
         z-index: 12000;
         -webkit-tap-highlight-color: transparent;
@@ -96,7 +101,7 @@ export default class Navbar {
         appearance: none;
         margin: 0;
         padding: 4px 4px;
-        height: 40px;
+        height: 100%; /* CHANGED */
         border: 0;
         border-radius: 10px;
         background: transparent;
