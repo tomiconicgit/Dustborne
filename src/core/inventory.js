@@ -19,7 +19,6 @@ export default class Inventory {
       grid-template-rows: repeat(4, 1fr);
       gap: 8px;
       width: 100%;
-      height: 100%;
       max-width: 400px;
       margin: 0 auto;
     `;
