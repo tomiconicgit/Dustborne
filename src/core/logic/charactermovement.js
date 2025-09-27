@@ -48,7 +48,7 @@ export default class CharacterMovement {
     if (!this._mixer && this.player?.object) {
       this._mixer = new THREE.AnimationMixer(this.player.object);
       // Prewarm both actions so we never show a bind/T-pose frame
-      this._prewarmAnimations().catch(() => {});
+      this._prewarmAnimations().catch((err) => console.error('Animation prewarm failed:', err));
     }
     if (this._mixer) this._mixer.update(dt);
 
@@ -63,12 +63,12 @@ export default class CharacterMovement {
         } else {
           this._path = null;
           this.player.cancelActions();
-          this._startIdle().catch(() => {});
+          this._startIdle().catch((err) => console.error('Failed to start idle:', err));
         }
       }
     } else if (!this.player.isMoving()) {
       // Make sure we end up in idle if nothing is happening
-      if (!this._idlePlaying) this._startIdle().catch(() => {});
+      if (!this._idlePlaying) this._startIdle().catch((err) => console.error('Failed to start idle:', err));
     }
 
     requestAnimationFrame(this.tick.bind(this));
@@ -100,9 +100,11 @@ export default class CharacterMovement {
 
   async handleTap(touch) {
     if (!this.camera?.threeCamera || !this.player?.object) return;
+    // CHANGED: Use the viewport's bounds, not the full window, for NDC calculation.
+    const rect = this.domElement.getBoundingClientRect();
     const ndc = new THREE.Vector2(
-      (touch.clientX / window.innerWidth) * 2 - 1,
-      -(touch.clientY / window.innerHeight) * 2 + 1
+      ((touch.clientX - rect.left) / rect.width) * 2 - 1,
+      -((touch.clientY - rect.top) / rect.height) * 2 + 1
     );
     this.raycaster.setFromCamera(ndc, this.camera.threeCamera);
 
@@ -128,7 +130,7 @@ export default class CharacterMovement {
       this.player.moveTo(this._path[0]);
 
       // Cross-fade from idle into walk without a zero-weight frame
-      this._startWalk().catch(() => {});
+      this._startWalk().catch((err) => console.error('Failed to start walk:', err));
     }
   }
 
@@ -181,13 +183,14 @@ export default class CharacterMovement {
 
   async _startIdle() {
     await this._ensureIdle();
-    this._idleAction.play(); // make sure it's playing
-
+    
     if (this._walkAction && this._walkPlaying) {
       // fade from walk to idle
-      this._idleAction.crossFadeFrom(this._walkAction, 0.18, false);
+      // ADDED .reset() for robustness.
+      this._idleAction.reset().crossFadeFrom(this._walkAction, 0.18, false);
       this._walkPlaying = false;
-    } else {
+    } else if (!this._idlePlaying) {
+      this._idleAction.play(); // Ensure it's playing if it wasn't
       this._idleAction.fadeIn(0.18);
     }
     this._idlePlaying = true;
@@ -195,13 +198,14 @@ export default class CharacterMovement {
 
   async _startWalk() {
     await this._ensureWalk();
-    this._walkAction.play(); // start first to avoid a blank frame
 
     if (this._idleAction && this._idlePlaying) {
       // fade from idle to walk (keeps a valid pose throughout)
-      this._walkAction.crossFadeFrom(this._idleAction, 0.18, false);
+      // ADDED .reset() for robustness. This is the key fix.
+      this._walkAction.reset().crossFadeFrom(this._idleAction, 0.18, false);
       this._idlePlaying = false;
-    } else {
+    } else if (!this._walkPlaying) {
+      this._walkAction.play();
       this._walkAction.fadeIn(0.18);
     }
     this._walkPlaying = true;
