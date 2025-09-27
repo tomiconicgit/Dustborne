@@ -5,9 +5,10 @@ export default class Camera {
   constructor() {
     this.target = null;
 
+    // CHANGED: Aspect ratio calculation now uses 75% of the window height.
     this.threeCamera = new THREE.PerspectiveCamera(
       75,
-      window.innerWidth / window.innerHeight,
+      window.innerWidth / (window.innerHeight * 0.75),
       0.1,
       5000
     );
@@ -38,7 +39,8 @@ export default class Camera {
   }
 
   handleResize() {
-    this.threeCamera.aspect = window.innerWidth / window.innerHeight;
+    // CHANGED: Aspect ratio calculation updated to match the new viewport size.
+    this.threeCamera.aspect = window.innerWidth / (window.innerHeight * 0.75);
     this.threeCamera.updateProjectionMatrix();
   }
 }
