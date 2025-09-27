@@ -9,7 +9,13 @@ export default class Character {
     this.object = null;
   }
 
-  // This function now handles the complete creation and setup of the model.
+  // The prewarm function is now the entry point for creating a character.
+  static async prewarm(scene) {
+    const character = new Character(scene);
+    await character.init();
+    return character;
+  }
+
   async init(position = new THREE.Vector3(0, 0, 2)) {
     const loader = new GLTFLoader();
     const gltf = await loader.loadAsync(this.url);
@@ -33,6 +39,6 @@ export default class Character {
     root.position.copy(position);
     this.scene.add(root);
     this.object = root;
-    return this; // Return the instance for chaining.
+    return this;
   }
 }
