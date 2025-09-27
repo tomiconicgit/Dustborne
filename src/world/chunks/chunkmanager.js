@@ -27,6 +27,9 @@ export default class ChunkManager {
       dirt: new THREE.MeshStandardMaterial({ color: '#8b5a2b' }),
     };
     this.rockTemplate = null;
+    
+    // FIX: A set to store the coordinates of all occupied tiles for pathfinding.
+    this.occupiedTiles = new Set();
   }
   
   async init() {
@@ -55,7 +58,6 @@ export default class ChunkManager {
     tiles.userData.isLandscape = true;
     tiles.receiveShadow = true;
     
-    const dirtMaterialIndex = 1; // Assuming sand is 0, dirt is 1 in a multi-material setup (or handle differently)
     const dummy = new THREE.Object3D();
     let i = 0;
     for (let x = 0; x < CHUNK_GRID_SIZE; x++) {
@@ -65,11 +67,8 @@ export default class ChunkManager {
         tiles.setMatrixAt(i++, dummy.matrix);
       }
     }
-    // For simplicity, we'll just swap materials on a second mesh for dirt
-    const dirtTiles = tiles.clone();
-    dirtTiles.material = this.materials.dirt;
     group.add(tiles);
-    // group.add(dirtTiles); // More complex logic needed to show only specific dirt tiles
+    // Note: Dirt tiles are not yet visually represented, but the data exists.
 
     // Build objects
     if (chunkData.objects.length > 0 && this.rockTemplate) {
@@ -83,6 +82,10 @@ export default class ChunkManager {
             dummy.scale.setScalar(obj.s);
             dummy.updateMatrix();
             rocks.setMatrixAt(index, dummy.matrix);
+
+            // FIX: Mark this tile as occupied so the character can't walk through it.
+            const tileKey = `${chunkX},${chunkZ}:${obj.x},${obj.z}`;
+            this.occupiedTiles.add(tileKey);
         });
         group.add(rocks);
     }
@@ -123,7 +126,6 @@ export default class ChunkManager {
     }
   }
 
-  // --- Pathfinding Helpers ---
   getTileAt(worldPos) {
       const chunkX = Math.floor((worldPos.x + UNITS_PER_CHUNK * 0.5) / UNITS_PER_CHUNK);
       const chunkZ = Math.floor((worldPos.z + UNITS_PER_CHUNK * 0.5) / UNITS_PER_CHUNK);
@@ -132,11 +134,16 @@ export default class ChunkManager {
 
       if (localX < 0 || localX >= CHUNK_GRID_SIZE || localZ < 0 || localZ >= CHUNK_GRID_SIZE) return null;
 
+      // FIX: Check if the tile is occupied by an object.
+      const tileKey = `${chunkX},${chunkZ}:${localX},${localZ}`;
+      const isOccupied = this.occupiedTiles.has(tileKey);
+
       const centerX = chunkX * UNITS_PER_CHUNK + localX * TILE_SIZE - UNITS_PER_CHUNK / 2 + 0.5;
       const centerZ = chunkZ * UNITS_PER_CHUNK + localZ * TILE_SIZE - UNITS_PER_CHUNK / 2 + 0.5;
 
       return {
-          chunkX, chunkZ, localX, localZ, isWalkable: true,
+          chunkX, chunkZ, localX, localZ,
+          isWalkable: !isOccupied, // Set walkability based on occupation status.
           center: new THREE.Vector3(centerX, 0, centerZ)
       };
   }
