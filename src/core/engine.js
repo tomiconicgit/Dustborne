@@ -5,7 +5,7 @@ export default class Engine {
     return [
       // Core Systems
       { name: 'Engine', type: 'script', path: './src/core/engine.js' },
-      { name: 'Scene', type: 'script', path: './src/core/scene.js' },
+      { name: 'Three', type: 'script', path: './src/core/three.js' },
       { name: 'Viewport', type: 'script', path: './src/core/viewport.js' },
       { name: 'Lighting', type: 'script', path: './src/core/lighting.js' },
       { name: 'Chunk', type: 'script', path: './src/core/chunk.js' },
