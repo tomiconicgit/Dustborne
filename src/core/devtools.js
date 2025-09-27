@@ -11,15 +11,21 @@ export default class DevTools {
       domOverlayParent = document.body;
     }
 
-    // Overlay group
+    // Main overlay group
     this.group = new THREE.Group();
     this.group.name = 'DevGridOverlay';
     this.group.visible = false;
     this.scene.add(this.group);
 
-    // Cache for generated text materials to optimize performance
+    // Group specifically for dynamic labels
+    this.labelsGroup = new THREE.Group();
+    this.labelsGroup.name = 'TileIDLabels';
+    this.group.add(this.labelsGroup);
+
+    // Cache for materials and a pool of reusable meshes for performance
     this.labelMaterialCache = new Map();
-    this.labelGeometry = new THREE.PlaneGeometry(0.7, 0.7); // Shared geometry for all labels
+    this.labelMeshPool = [];
+    this.labelGeometry = new THREE.PlaneGeometry(0.7, 0.7);
 
     // Toggle button
     this.button = document.createElement('button');
@@ -38,7 +44,7 @@ export default class DevTools {
       borderRadius: '10px',
       opacity: '0.9',
       boxShadow: '0 2px 8px rgba(0,0,0,.35)',
-      '-webkitTapHighlightColor': 'transparent' // <-- MUST be quoted
+      '-webkitTapHighlightColor': 'transparent'
     });
     this.button.addEventListener('click', () => {
       this.group.visible = !this.group.visible;
@@ -64,17 +70,16 @@ export default class DevTools {
     context.font = 'bold 52px Inter, sans-serif';
     context.textAlign = 'center';
     context.textBaseline = 'middle';
-    context.fillStyle = '#f5eeda'; // Use theme's text color
+    context.fillStyle = '#f5eeda';
     context.fillText(text, size / 2, size / 2);
 
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
-    texture.needsUpdate = true;
 
     const material = new THREE.MeshBasicMaterial({
       map: texture,
       transparent: true,
-      depthWrite: false, // Prevent z-fighting with ground
+      depthWrite: false,
       side: THREE.DoubleSide,
     });
 
@@ -82,30 +87,76 @@ export default class DevTools {
     return material;
   }
 
-  clear() {
-    while (this.group.children.length) {
-      const c = this.group.children.pop();
-      c.geometry?.dispose?.();
-      if (c.material?.isMaterial) c.material.dispose();
-      // Also clear any nested groups
-      if (c.isGroup) {
-        c.clear();
-      }
+  /**
+   * Called every frame to show labels only around the player.
+   */
+  update(playerPosition) {
+    // If the entire grid is hidden, hide labels and do nothing.
+    if (!this.group.visible) {
+      if (this.labelsGroup.visible) this.labelsGroup.visible = false;
+      return;
     }
+    if (!this.labelsGroup.visible) this.labelsGroup.visible = true;
+
+    // Define the 100x100 render range (50 units in each direction)
+    const range = 50;
+    const minX = playerPosition.x - range;
+    const maxX = playerPosition.x + range;
+    const minZ = playerPosition.z - range;
+    const maxZ = playerPosition.z + range;
+
+    let poolIndex = 0;
+
+    // Go through all tiles and find which ones are inside the player's range
+    this.world.tiles.forEach((tile, index) => {
+      if (tile.center.x >= minX && tile.center.x <= maxX &&
+          tile.center.z >= minZ && tile.center.z <= maxZ) {
+        
+        // Get a mesh from the pool, or create a new one if needed
+        let mesh = this.labelMeshPool[poolIndex];
+        if (!mesh) {
+          mesh = new THREE.Mesh(this.labelGeometry);
+          this.labelMeshPool.push(mesh);
+          this.labelsGroup.add(mesh);
+        }
+
+        // Update the mesh with the correct material, position, and rotation
+        mesh.material = this.getLabelMaterial(String(index));
+        mesh.position.copy(tile.center);
+        mesh.position.y += 0.003; // Lift slightly above grid lines
+        mesh.rotation.x = -Math.PI / 2;
+        mesh.visible = true;
+        
+        poolIndex++;
+      }
+    });
+
+    // Hide any remaining, unused meshes in the pool
+    for (let i = poolIndex; i < this.labelMeshPool.length; i++) {
+      this.labelMeshPool[i].visible = false;
+    }
+  }
+
+  clear() {
+    // Clear all children from the main group (lines, X's, and labels group)
+    while (this.group.children.length) {
+      this.group.remove(this.group.children[0]);
+    }
+
     // Dispose cached materials and textures
     this.labelMaterialCache.forEach((material) => {
-        material.map?.dispose();
-        material.dispose();
+      material.map?.dispose();
+      material.dispose();
     });
     this.labelMaterialCache.clear();
   }
 
-  // Build grid lines, blocked tiles, and tile ID numbers
+  // Build static grid elements (lines and blocked markers)
   build() {
-    this.clear();
+    this.clear(); // Clear previous elements first
 
-    const TILE = this.world.TILE_SIZE;   // 1
-    const SIZE = this.world.CHUNK_SIZE;  // 50
+    const TILE = this.world.TILE_SIZE;
+    const SIZE = this.world.CHUNK_SIZE;
     const HALF = SIZE * 0.5;
 
     // Grid lines
@@ -113,9 +164,9 @@ export default class DevTools {
     const verts = [];
     for (let i = 0; i <= SIZE; i++) {
       const x = -HALF + i * TILE;
-      verts.push(x, 0.001, -HALF,  x, 0.001,  HALF);  // vertical
+      verts.push(x, 0.001, -HALF, x, 0.001, HALF);
       const z = -HALF + i * TILE;
-      verts.push(-HALF, 0.001, z,  HALF, 0.001, z);   // horizontal
+      verts.push(-HALF, 0.001, z, HALF, 0.001, z);
     }
     gridGeom.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
     const gridMat = new THREE.LineBasicMaterial({ color: 0x333333, transparent: true, opacity: 0.85 });
@@ -130,8 +181,8 @@ export default class DevTools {
       if (!t.isWalkable) {
         const cx = t.center.x, cz = t.center.z, y = 0.002;
         xVerts.push(
-          cx - o, y, cz - o,  cx + o, y, cz + o,
-          cx - o, y, cz + o,  cx + o, y, cz - o
+          cx - o, y, cz - o, cx + o, y, cz + o,
+          cx - o, y, cz + o, cx + o, y, cz - o
         );
       }
     }
@@ -141,26 +192,14 @@ export default class DevTools {
       const xLines = new THREE.LineSegments(xGeom, xMat);
       this.group.add(xLines);
     }
-    
-    // Tile ID Labels
-    const labelsGroup = new THREE.Group();
-    labelsGroup.name = 'TileIDLabels';
-    this.world.tiles.forEach((tile, index) => {
-      const material = this.getLabelMaterial(String(index));
-      const mesh = new THREE.Mesh(this.labelGeometry, material);
-      
-      mesh.position.copy(tile.center);
-      mesh.position.y += 0.003; // Lift slightly above grid lines
-      mesh.rotation.x = -Math.PI / 2;
-      
-      labelsGroup.add(mesh);
-    });
-    this.group.add(labelsGroup);
   }
 
   dispose() {
     this.clear();
     this.labelGeometry.dispose();
+    this.labelMeshPool.forEach(mesh => {
+      this.labelsGroup.remove(mesh);
+    });
     this.scene.remove(this.group);
     this.button?.remove();
   }
