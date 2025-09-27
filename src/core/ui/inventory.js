@@ -1,17 +1,17 @@
 // file: src/core/ui/inventory.js
-// Slide-down fixed panel under the navbar: 7x5 grid of empty slots.
+// Slide-down fixed panel under the navbar: simple background area,
+// no slot containers (5 across x 4 down visual space, but *blank*).
 
 export default class InventoryPanel {
   /**
+   * No slots are rendered. This is just the panel surface.
+   * It sizes to roughly 5x4 item area visually without covering much of the game.
+   *
    * @param {object} opts
-   * @param {HTMLElement} [opts.parent=document.body] - Where to append the panel
-   * @param {number} [opts.rows=5]
-   * @param {number} [opts.cols=7]
+   * @param {HTMLElement} [opts.parent=document.body]
    */
-  constructor({ parent = document.body, rows = 5, cols = 7 } = {}) {
+  constructor({ parent = document.body } = {}) {
     this.parent = parent;
-    this.rows = rows;
-    this.cols = cols;
 
     this._injectStyles();
     this._build();
@@ -34,7 +34,6 @@ export default class InventoryPanel {
     this.el?.remove();
   }
 
-  /** Optional helper to wire to a Navbar instance */
   attachToNavbar(navbarInstance) {
     this._navbar = navbarInstance?.element || null;
     this._syncWidthToNavbar();
@@ -59,25 +58,15 @@ export default class InventoryPanel {
     wrap.id = 'db-ui-inventory';
     wrap.className = 'dbui-inv';
     wrap.setAttribute('role', 'region');
-    wrap.setAttribute('aria-label', 'Inventory panel (read-only)');
+    wrap.setAttribute('aria-label', 'Inventory panel');
     wrap.setAttribute('aria-hidden', 'true');
 
-    const grid = document.createElement('div');
-    grid.className = 'dbui-inv-grid';
-    grid.style.setProperty('--cols', String(this.cols));
-    grid.style.setProperty('--rows', String(this.rows));
+    // Content is intentionally empty (no slot elements).
+    // Provide a subtle “sizing” element so the height hints ~5x4 space visually.
+    const pad = document.createElement('div');
+    pad.className = 'dbui-inv-pad';
+    wrap.appendChild(pad);
 
-    const total = this.rows * this.cols;
-    for (let i = 0; i < total; i++) {
-      const slot = document.createElement('button');
-      slot.type = 'button';
-      slot.className = 'dbui-inv-slot';
-      slot.setAttribute('aria-label', `Slot ${i + 1} empty`);
-      slot.disabled = true;
-      grid.appendChild(slot);
-    }
-
-    wrap.appendChild(grid);
     document.body.appendChild(wrap);
     this.el = wrap;
   }
@@ -88,15 +77,13 @@ export default class InventoryPanel {
       :root{
         --dbui-inv-bg: rgba(20,18,15,0.82);
         --dbui-inv-stroke: rgba(245,238,218,0.1);
-        --dbui-inv-slot: rgba(255,255,255,0.06);
-        --dbui-inv-slot-stroke: rgba(245,238,218,0.12);
-        --dbui-inv-slot-shadow: inset 0 2px 0 rgba(255,255,255,0.04);
       }
 
       .dbui-inv{
         position: fixed;
         top: calc(env(safe-area-inset-top) + 10px + var(--dbui-nav-h, 56px) + 8px);
-        height: clamp(140px, 26vh, 320px);
+        /* Short drop so it doesn't cover much of the game */
+        height: clamp(120px, 22vh, 240px);
         padding: 10px;
         background: var(--dbui-inv-bg);
         backdrop-filter: blur(14px) saturate(1.2);
@@ -120,21 +107,10 @@ export default class InventoryPanel {
         pointer-events: auto;
       }
 
-      .dbui-inv-grid{
-        width: 100%; height: 100%;
-        display: grid;
-        grid-template-columns: repeat(var(--cols), 1fr);
-        grid-template-rows: repeat(var(--rows), 1fr);
-        gap: 8px;
-      }
-
-      .dbui-inv-slot{
-        appearance: none;
-        border: 1px dashed var(--dbui-inv-slot-stroke);
-        background: var(--dbui-inv-slot);
-        border-radius: 10px;
-        box-shadow: var(--dbui-inv-slot-shadow);
-        pointer-events: none;
+      /* purely to give the panel a bit of inner breathing room */
+      .dbui-inv-pad{
+        width: 100%;
+        height: 100%;
       }
     `;
     const style = document.createElement('style');
