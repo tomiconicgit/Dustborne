@@ -10,7 +10,7 @@ import Sky from '../world/assets/sky/sky.js';
 import { register as registerMining } from '../world/chunks/miningarea.js';
 import DevTools from './devtools.js';
 
-export default class WorldEngine {
+class WorldEngine {
   constructor(scene, {
     CHUNK_SIZE = 50,     // world units per chunk (square)
     TILE_SIZE  = 1,      // world units per tile (1×1)
@@ -216,9 +216,52 @@ export default class WorldEngine {
   }
 }
 
-/** Loader entrypoint */
-export async function show({ rootId = 'game-root' } = {}) {
-  // root mount
+/**
+ * Pre-warms the world: loads all assets and sets up the scene
+ * This is called by the loading manager BEFORE the start button is shown.
+ */
+export async function prewarm() {
+  const scene = new THREE.Scene();
+  const lighting = new Lighting(scene);
+  const sky = new Sky(scene, lighting);
+  const camera = new Camera();
+  
+  const world = new WorldEngine(scene, { TILE_SIZE: 1 });
+  
+  // Define chunks and content spawners
+  world.registerChunk('mining', 0, 0);
+  world.registerChunk('desert',  1,  0);
+  world.registerChunk('desert', -1,  0);
+  world.registerChunk('desert',  0,  1);
+  world.registerChunk('desert',  0, -1);
+  registerMining(world);
+  
+  // Build the world structure and load all 3D models
+  world.buildTiles();
+  await world.spawnStaticContent();
+
+  // Load the character model
+  const character = new Character(scene);
+  await character.init(new THREE.Vector3(0, 0, 2));
+  
+  // Set camera to character and perform initial render setup
+  camera.setTarget(character.object);
+  world.update(character.object.position); // Render initial set of tiles
+
+  // Return all the ready-to-go objects
+  return { scene, camera, lighting, sky, world, character };
+}
+
+
+/**
+ * The final entrypoint, called AFTER the user clicks "Start Game".
+ * It receives the pre-warmed game state and just needs to start the render loop.
+ */
+export function show({ rootId = 'game-root', prewarmedState }) {
+  // Unpack the pre-warmed state
+  const { scene, camera, world, character } = prewarmedState;
+
+  // Root mount
   let root = document.getElementById(rootId);
   if (!root) {
     root = document.createElement('div');
@@ -226,47 +269,17 @@ export async function show({ rootId = 'game-root' } = {}) {
     document.body.appendChild(root);
   }
 
-  // viewport / renderer
+  // Create viewport and connect it to the pre-warmed scene/camera
   const viewport = new Viewport({ root });
   viewport.setClearColor(0x0b0f14, 1);
   viewport.renderer.shadowMap.enabled = true;
   viewport.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-
-  // scene, sky, lighting
-  const scene = new THREE.Scene();
-  const lighting = new Lighting(scene);
-  const sky = new Sky(scene, lighting);
-
-  // camera
-  const camera = new Camera();
   viewport.setScene(scene);
   viewport.setCamera(camera.threeCamera);
   viewport.start();
+
+  // Initialize controls
   const orbitController = new CameraController(viewport.domElement, camera);
-
-  // world (1×1 tiles)
-  const world = new WorldEngine(scene, { TILE_SIZE: 1 });
-
-  // chunks
-  world.registerChunk('mining', 0, 0);
-  world.registerChunk('desert',  1,  0);
-  world.registerChunk('desert', -1,  0);
-  world.registerChunk('desert',  0,  1);
-  world.registerChunk('desert',  0, -1);
-
-  // mining spawner: marks 20×20 dirt & places 6 spaced rocks
-  registerMining(world);
-
-  world.buildTiles();
-  await world.spawnStaticContent();
-
-  // character
-  const character = new Character(scene);
-  await character.init(new THREE.Vector3(0, 0, 2));
-  camera.setTarget(character.object);
-  camera.handleResize();
-
-  // tap-to-move (8-way A* handled in pathfinder)
   const movement = new CharacterMovement(
     viewport.domElement,
     { scene },
@@ -276,24 +289,29 @@ export async function show({ rootId = 'game-root' } = {}) {
     world
   );
 
-  // dev tools (grid toggle button)
-  const devtools = new DevTools(scene, world, document.getElementById('game-root') || document.body);
+  // Initialize dev tools
+  const devtools = new DevTools(scene, world, root);
   devtools.build();
 
   // Main game loop
   const step = () => {
     if (character.object) {
       world.update(character.object.position);
-      devtools.update(character.object.position); // <-- THIS LINE IS ADDED
+      devtools.update(character.object.position);
     }
     requestAnimationFrame(step);
   };
   requestAnimationFrame(step);
 
-  // resize
-  window.addEventListener('resize', () => camera.handleResize(), { passive: true });
+  // Handle resizing
+  const onResize = () => {
+    camera.handleResize();
+    viewport._resize();
+  };
+  window.addEventListener('resize', onResize, { passive: true });
+  onResize(); // Initial call
 
-  // expose for console
+  // Expose for console debugging
   window.Dustborne = Object.assign(window.Dustborne || {}, { world, movement, devtools, scene, camera, viewport });
-  console.log('WorldEngine: 50×50 @1, 20×20 dirt, 6 spaced rocks, 8-way pathfinding, dev grid toggle.');
+  console.log('Dustborne game started.');
 }
