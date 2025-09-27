@@ -5,6 +5,7 @@ import { scene } from '../../core/three.js';
 import Viewport from '../../core/viewport.js';
 import Camera from '../../core/camera.js';
 import ChunkManager from '../../world/chunks/chunkmanager.js';
+import GridToggle from '../../developer/gridtoggle.js'; // FIX: Import GridToggle to call its update method
 
 class PriorityQueue {
   constructor() { this.elements = []; }
@@ -147,9 +148,10 @@ export default class Character {
     
     this._mixer?.update(dt);
     ChunkManager.instance?.update(this.object.position, this.viewDistance);
-
-    // FIX: Update the camera's position every frame to follow the character
     Camera.main?.update();
+
+    // FIX: Call the grid's update method every frame so it can follow the player
+    GridToggle.main?.update(this.object.position);
   }
 
   _moveTo(point) {
