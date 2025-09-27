@@ -18,9 +18,9 @@ export default class Inventory {
       grid-template-columns: repeat(5, 1fr);
       grid-template-rows: repeat(3, 1fr);
       gap: 8px;
-      width: 95%;
+      width: 70%;
       max-width: 400px;
-      max-height: 95%;
+      max-height: 70%;
     `;
 
     const totalSlots = 15;
@@ -29,7 +29,7 @@ export default class Inventory {
       slot.style.cssText = `
         background-color: rgba(0,0,0,0.3);
         border: 1px solid rgba(245, 238, 218, 0.08);
-        border-radius: 8px;
+        border-radius: 10px;
         aspect-ratio: 1 / 1;
       `;
       gridContainer.appendChild(slot);
