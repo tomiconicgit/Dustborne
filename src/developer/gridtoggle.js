@@ -6,16 +6,10 @@ import ChunkManager from '../world/chunks/chunkmanager.js';
 export default class GridToggle {
   static main = null;
 
-  /**
-   * This static method is the entry point called by the loading manager.
-   * It creates the single instance of the GridToggle tool.
-   */
   static create() {
     if (GridToggle.main) return;
-    
-    // Ensure core systems are ready before creating the tool
     if (!scene || !ChunkManager.instance) {
-      console.error('GridToggle cannot be created: Core systems (Scene, ChunkManager) are not ready.');
+      console.error('GridToggle cannot be created before scene and ChunkManager.');
       return;
     }
     GridToggle.main = new GridToggle(scene, ChunkManager.instance);
@@ -24,22 +18,28 @@ export default class GridToggle {
   constructor(scene, world, domOverlayParent = document.body) {
     this.scene = scene;
     this.world = world;
-    if (!domOverlayParent || String(domOverlayParent.tagName).toLowerCase() === 'canvas') {
-      domOverlayParent = document.body;
-    }
+
+    // This group will hold the grid. The button toggles its visibility.
     this.group = new THREE.Group();
     this.group.name = 'DevGridOverlay';
     this.group.visible = false;
     this.scene.add(this.group);
-    this.labelsGroup = new THREE.Group();
-    this.labelsGroup.name = 'TileIDLabels';
-    this.group.add(this.labelsGroup);
-    this.labelMaterialCache = new Map();
-    this.labelMeshPool = [];
-    this.labelGeometry = new THREE.PlaneGeometry(0.7, 0.7);
+
+    // --- FIX: Replaced label logic with a proper GridHelper ---
+    const gridDivisions = 50;
+    const gridSize = 50;
+    const gridColor = 0xaaaaaa;
+
+    this.gridHelper = new THREE.GridHelper(gridSize, gridDivisions, gridColor, gridColor);
+    this.gridHelper.material.opacity = 0.5;
+    this.gridHelper.material.transparent = true;
+    this.gridHelper.position.y = 0.01; // Position slightly above ground to prevent z-fighting
+    this.group.add(this.gridHelper);
+    // --- End of Fix ---
+
     this.button = document.createElement('button');
     this.button.textContent = 'Grid';
-    this.button.setAttribute('aria-label', 'Toggle grid/blocked overlay');
+    this.button.setAttribute('aria-label', 'Toggle grid overlay');
     Object.assign(this.button.style, {
       position: 'fixed', top: 'calc(env(safe-area-inset-top) + 10px)', right: 'calc(env(safe-area-inset-right) + 10px)',
       zIndex: '20000', padding: '10px 12px', font: '600 12px/1 Inter, system-ui, sans-serif',
@@ -54,67 +54,24 @@ export default class GridToggle {
     domOverlayParent.appendChild(this.button);
   }
 
-  getLabelMaterial(text) {
-    if (this.labelMaterialCache.has(text)) return this.labelMaterialCache.get(text);
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-    const size = 128;
-    canvas.width = size; canvas.height = size;
-    context.font = 'bold 52px Inter, sans-serif';
-    context.textAlign = 'center';
-    context.textBaseline = 'middle';
-    context.fillStyle = '#f5eeda';
-    context.fillText(text, size / 2, size / 2 + 4);
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.colorSpace = THREE.SRGBColorSpace;
-    const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false, side: THREE.DoubleSide });
-    this.labelMaterialCache.set(text, material);
-    return material;
-  }
-
+  /**
+   * FIX: This method now updates the grid's position to follow the player.
+   * It's called every frame from the character's update loop.
+   */
   update(playerPosition) {
-    if (!this.group.visible || !this.world.activeChunks) {
-      if (this.labelsGroup.visible) this.labelsGroup.visible = false;
+    // Do nothing if the grid isn't visible
+    if (!this.group.visible) {
       return;
     }
-    if (!this.labelsGroup.visible) this.labelsGroup.visible = true;
-    let poolIndex = 0;
-    const range = 10;
-    const minX = playerPosition.x - range;
-    const maxX = playerPosition.x + range;
-    const minZ = playerPosition.z - range;
-    const maxZ = playerPosition.z + range;
-    
-    // The debug tool assumes chunks will have a 'tiles' array.
-    // This is for debugging only and might need adjustment based on final ChunkManager structure.
-    for (const chunk of this.world.activeChunks.values()) {
-        if (!chunk.tiles) continue; // Safety check
-      for (const tile of chunk.tiles) {
-        if (tile.center.x >= minX && tile.center.x <= maxX && tile.center.z >= minZ && tile.center.z <= maxZ) {
-          let mesh = this.labelMeshPool[poolIndex];
-          if (!mesh) {
-            mesh = new THREE.Mesh(this.labelGeometry);
-            this.labelMeshPool.push(mesh);
-            this.labelsGroup.add(mesh);
-          }
-          const tileId = `${tile.chunk.chunkX},${tile.chunk.chunkZ}:${tile.localX},${tile.localZ}`;
-          mesh.material = this.getLabelMaterial(tileId);
-          mesh.position.copy(tile.center);
-          mesh.position.y += 0.003;
-          mesh.rotation.x = -Math.PI / 2;
-          mesh.visible = true;
-          poolIndex++;
-        }
-      }
-    }
-    for (let i = poolIndex; i < this.labelMeshPool.length; i++) {
-      this.labelMeshPool[i].visible = false;
+
+    // Snap the grid's position to the nearest integer, keeping it centered on the player
+    if (this.gridHelper) {
+      this.gridHelper.position.x = Math.round(playerPosition.x);
+      this.gridHelper.position.z = Math.round(playerPosition.z);
     }
   }
 
   dispose() {
-    this.labelGeometry.dispose();
-    this.labelMaterialCache.forEach(m => { m.map?.dispose(); m.dispose(); });
     this.scene.remove(this.group);
     this.button?.remove();
   }
