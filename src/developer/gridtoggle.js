@@ -25,26 +25,26 @@ export default class GridToggle {
     this.group.visible = false;
     this.scene.add(this.group);
 
-    // --- GridHelper for the visual grid lines ---
     const gridSize = 50;
     const gridDivisions = 50;
-    const gridColor = 0x444444; // FIX: Made the grid color darker.
+    const gridColor = 0x444444;
     this.gridHelper = new THREE.GridHelper(gridSize, gridDivisions, gridColor, gridColor);
     this.gridHelper.material.opacity = 0.5;
     this.gridHelper.material.transparent = true;
     this.gridHelper.position.y = 0.01;
     this.group.add(this.gridHelper);
 
-    // --- Logic for the number labels ---
     this.labelsGroup = new THREE.Group();
     this.labelsGroup.name = 'TileNumberLabels';
     this.labelsGroup.visible = false;
+    // FIX: Make the entire group of labels invisible to the raycaster.
+    this.labelsGroup.raycast = () => {};
     this.group.add(this.labelsGroup);
+
     this.labelMaterialCache = new Map();
     this.labelMeshPool = [];
     this.labelGeometry = new THREE.PlaneGeometry(0.7, 0.7);
 
-    // --- Button Logic ---
     this.button = document.createElement('button');
     this.button.textContent = 'Grid: Off';
     this.button.setAttribute('aria-label', 'Toggle grid overlay mode');
@@ -56,20 +56,19 @@ export default class GridToggle {
       '-webkitTapHighlightColor': 'transparent', cursor: 'pointer', minWidth: '90px'
     });
     
-    // FIX: Updated button to cycle through 3 modes
     this.button.addEventListener('click', () => {
       this.gridMode = (this.gridMode + 1) % 3;
       switch (this.gridMode) {
-        case 0: // Off
+        case 0:
           this.group.visible = false;
           this.button.textContent = 'Grid: Off';
           break;
-        case 1: // Grid Only
+        case 1:
           this.group.visible = true;
           this.labelsGroup.visible = false;
           this.button.textContent = 'Grid: On';
           break;
-        case 2: // Grid + Numbers
+        case 2:
           this.group.visible = true;
           this.labelsGroup.visible = true;
           this.button.textContent = 'Grid: Nums';
@@ -83,7 +82,7 @@ export default class GridToggle {
     if (this.labelMaterialCache.has(text)) return this.labelMaterialCache.get(text);
     const canvas = document.createElement('canvas');
     const context = canvas.getContext('2d');
-    const size = 256; // Increased size for better resolution
+    const size = 256;
     canvas.width = size; canvas.height = size;
     context.font = 'bold 60px Inter, sans-serif';
     context.textAlign = 'center';
@@ -103,17 +102,14 @@ export default class GridToggle {
     const snappedX = Math.round(playerPosition.x);
     const snappedZ = Math.round(playerPosition.z);
 
-    // Update the position of the main GridHelper
     this.gridHelper.position.set(snappedX, 0.01, snappedZ);
 
-    // If number mode is not active, hide labels and stop.
     if (this.gridMode !== 2) {
       this.labelsGroup.visible = false;
       return;
     }
     this.labelsGroup.visible = true;
 
-    // Update the number labels
     let poolIndex = 0;
     const halfGridSize = Math.floor(this.gridHelper.parameters.size / 2);
 
@@ -137,7 +133,6 @@ export default class GridToggle {
       }
     }
     
-    // Hide any unused labels from the pool
     for (let i = poolIndex; i < this.labelMeshPool.length; i++) {
         this.labelMeshPool[i].visible = false;
     }
