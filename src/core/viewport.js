@@ -24,8 +24,9 @@ export default class Viewport {
     // Canvas + renderer
     this._canvas = document.createElement('canvas');
     this._canvas.id = 'db-viewport';
+    // CHANGED: Viewport is now fixed to the top 75% of the screen.
     this._canvas.style.cssText = `
-      position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; touch-action: none;
+      position: fixed; top: 0; left: 0; width: 100vw; height: 75vh; display: block; touch-action: none;
     `;
     this._root.appendChild(this._canvas);
 
@@ -114,8 +115,9 @@ export default class Viewport {
   }
 
   _resize = () => {
+    // CHANGED: Use 75% of the window height for the renderer size.
     const width = Math.max(1, Math.floor(this._root.clientWidth || window.innerWidth));
-    const height = Math.max(1, Math.floor(this._root.clientHeight || window.innerHeight));
+    const height = Math.max(1, Math.floor((this._root.clientHeight || window.innerHeight) * 0.75));
     const dpr = Math.min(window.devicePixelRatio || 1, 2); // clamp for iPhone perf
     this._renderer.setPixelRatio(dpr);
     this._renderer.setSize(width, height, false);
