@@ -1,33 +1,29 @@
-// file: src/core/ui/inventory.js
-// Slide-down fixed panel under the navbar: 7x5 grid of empty slots.
+// file: src/core/ui/navbar.js
+// Floating top navigation bar for mobile (Inventory, Skills, Missions, Map)
 
-export default class InventoryPanel {
+export default class Navbar {
   /**
    * @param {object} opts
-   * @param {HTMLElement} [opts.parent=document.body] - Where to append the panel
-   * @param {number} [opts.rows=5]
-   * @param {number} [opts.cols=7]
+   * @param {HTMLElement} [opts.parent=document.body] - Where to append the navbar
+   * @param {object} [opts.hooks] - Optional callbacks
+   * @param {Function} [opts.hooks.onInventory] - Called when Inventory is tapped
+   * @param {Function} [opts.hooks.onSkills]
+   * @param {Function} [opts.hooks.onMissions]
+   * @param {Function} [opts.hooks.onMap]
    */
-  constructor({ parent = document.body, rows = 5, cols = 7 } = {}) {
+  constructor({ parent = document.body, hooks = {} } = {}) {
     this.parent = parent;
-    this.rows = rows;
-    this.cols = cols;
-
+    this.hooks = hooks;
     this._injectStyles();
     this._build();
-    this._resizeHandler = () => this._syncWidthToNavbar();
+    this._bind();
+    this._updateNavHeightVar();
+    this._resizeHandler = () => this._updateNavHeightVar();
     window.addEventListener('resize', this._resizeHandler, { passive: true });
     window.addEventListener('orientationchange', this._resizeHandler, { passive: true });
-    // Initial width sync (in case navbar is already present)
-    queueMicrotask(() => this._syncWidthToNavbar());
   }
 
   get element() { return this.el; }
-
-  open()  { this.el.classList.add('dbui-inv--open');  this._syncWidthToNavbar(); }
-  close() { this.el.classList.remove('dbui-inv--open'); }
-  toggle(){ this.el.classList.toggle('dbui-inv--open'); this._syncWidthToNavbar(); }
-  isOpen(){ return this.el.classList.contains('dbui-inv--open'); }
 
   dispose() {
     window.removeEventListener('resize', this._resizeHandler);
@@ -35,115 +31,166 @@ export default class InventoryPanel {
     this.el?.remove();
   }
 
-  /** Optional helper to wire to a Navbar instance */
-  attachToNavbar(navbarInstance) {
-    this._navbar = navbarInstance?.element || null;
-    this._syncWidthToNavbar();
+  setActive(key) {
+    const map = {
+      inventory: this.btnInventory,
+      skills: this.btnSkills,
+      missions: this.btnMissions,
+      map: this.btnMap,
+    };
+    Object.values(map).forEach(b => b?.classList.remove('dbui-nav-btn--active'));
+    if (map[key]) map[key].classList.add('dbui-nav-btn--active');
   }
 
-  _syncWidthToNavbar() {
-    if (!this._navbar) this._navbar = document.getElementById('db-ui-navbar');
-    if (this._navbar) {
-      const r = this._navbar.getBoundingClientRect();
-      // Match width & horizontal position of the navbar
-      this.el.style.width = `${Math.round(r.width)}px`;
-      this.el.style.left = `${Math.round(r.left)}px`;
-    } else {
-      // Fallback to centered width similar to navbar defaults
-      this.el.style.width = 'min(94vw, 720px)';
-      this.el.style.left = '50%';
-      this.el.style.transform = 'translateX(-50%)';
-    }
+  _updateNavHeightVar() {
+    // Expose navbar height to CSS (used by panels to sit under the bar)
+    const h = this.el.getBoundingClientRect().height;
+    document.documentElement.style.setProperty('--dbui-nav-h', `${Math.ceil(h)}px`);
   }
 
   _build() {
-    const wrap = document.createElement('section');
-    wrap.id = 'db-ui-inventory';
-    wrap.className = 'dbui-inv';
-    wrap.setAttribute('role', 'region');
-    wrap.setAttribute('aria-label', 'Inventory panel (read-only)');
-    wrap.setAttribute('aria-hidden', 'true');
+    const wrap = document.createElement('nav');
+    wrap.id = 'db-ui-navbar';
+    wrap.className = 'dbui-nav';
+    wrap.setAttribute('role', 'navigation');
+    wrap.setAttribute('aria-label', 'Game');
 
-    // Grid
-    const grid = document.createElement('div');
-    grid.className = 'dbui-inv-grid';
-    grid.style.setProperty('--cols', String(this.cols));
-    grid.style.setProperty('--rows', String(this.rows));
+    wrap.innerHTML = `
+      <button class="dbui-nav-btn" id="dbui-nav-inventory" aria-label="Inventory">
+        ${svg.inventory}
+        <span>Inventory</span>
+      </button>
+      <button class="dbui-nav-btn" id="dbui-nav-skills" aria-label="Skills">
+        ${svg.skills}
+        <span>Skills</span>
+      </button>
+      <button class="dbui-nav-btn" id="dbui-nav-missions" aria-label="Missions">
+        ${svg.missions}
+        <span>Missions</span>
+      </button>
+      <button class="dbui-nav-btn" id="dbui-nav-map" aria-label="Map">
+        ${svg.map}
+        <span>Map</span>
+      </button>
+    `;
 
-    const total = this.rows * this.cols;
-    for (let i = 0; i < total; i++) {
-      const slot = document.createElement('button');
-      slot.type = 'button';
-      slot.className = 'dbui-inv-slot';
-      slot.setAttribute('aria-label', `Slot ${i + 1} empty`);
-      slot.disabled = true; // display-only for now
-      grid.appendChild(slot);
-    }
-
-    wrap.appendChild(grid);
-    document.body.appendChild(wrap);
+    this.parent.appendChild(wrap);
     this.el = wrap;
+
+    this.btnInventory = wrap.querySelector('#dbui-nav-inventory');
+    this.btnSkills    = wrap.querySelector('#dbui-nav-skills');
+    this.btnMissions  = wrap.querySelector('#dbui-nav-missions');
+    this.btnMap       = wrap.querySelector('#dbui-nav-map');
+  }
+
+  _bind() {
+    const tapOpts = { passive: true };
+    this.btnInventory.addEventListener('click', () => this.hooks.onInventory?.(), tapOpts);
+    this.btnSkills.addEventListener('click',    () => this.hooks.onSkills?.(), tapOpts);
+    this.btnMissions.addEventListener('click',  () => this.hooks.onMissions?.(), tapOpts);
+    this.btnMap.addEventListener('click',       () => this.hooks.onMap?.(), tapOpts);
   }
 
   _injectStyles() {
-    if (document.getElementById('dbui-inventory-styles')) return;
+    if (document.getElementById('dbui-navbar-styles')) return;
     const css = `
       :root{
-        --dbui-inv-bg: rgba(20,18,15,0.82);
-        --dbui-inv-stroke: rgba(245,238,218,0.1);
-        --dbui-inv-slot: rgba(255,255,255,0.06);
-        --dbui-inv-slot-stroke: rgba(245,238,218,0.12);
-        --dbui-inv-slot-shadow: inset 0 2px 0 rgba(255,255,255,0.04);
+        --dbui-bg: rgba(20,18,15,0.75);
+        --dbui-stroke: rgba(245,238,218,0.12);
+        --dbui-text: #f5eeda;
+        --dbui-subtle:#c3b8a5;
+        --dbui-accent:#42a5ff;
+        --dbui-active:#ffd46b;
+        --dbui-shadow: 0 12px 30px rgba(0,0,0,.45);
       }
 
-      .dbui-inv{
+      .dbui-nav{
         position: fixed;
-        top: calc(env(safe-area-inset-top) + 10px + var(--dbui-nav-h, 56px) + 8px);
-        /* width & left set dynamically to match navbar */
-        height: clamp(140px, 26vh, 320px); /* not too tall */
-        padding: 10px;
-        background: var(--dbui-inv-bg);
+        top: calc(env(safe-area-inset-top) + 10px);
+        left: 50%;
+        transform: translateX(-50%);
+        width: min(94vw, 720px);
+        height: 56px;
+        padding: 6px;
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 6px;
+        align-items: center;
+        background: var(--dbui-bg);
         backdrop-filter: blur(14px) saturate(1.2);
         -webkit-backdrop-filter: blur(14px) saturate(1.2);
-        border: 1px solid var(--dbui-inv-stroke);
+        border: 1px solid var(--dbui-stroke);
         border-radius: 14px;
-        box-shadow: 0 14px 40px rgba(0,0,0,.45);
-        z-index: 11990;
-        overflow: hidden; /* fixed panel, no scroll */
-        transform: translateY(-18px); /* start a bit tucked under bar */
-        opacity: 0;
-        visibility: hidden;
-        transition: opacity .22s ease, transform .22s ease, visibility .22s ease;
-        pointer-events: none;
+        box-shadow: var(--dbui-shadow);
+        z-index: 12000;
+        -webkit-tap-highlight-color: transparent;
       }
 
-      .dbui-inv.dbui-inv--open{
-        transform: translateY(0px);
-        opacity: 1;
-        visibility: visible;
-        pointer-events: auto;
-      }
-
-      .dbui-inv-grid{
-        width: 100%; height: 100%;
-        display: grid;
-        grid-template-columns: repeat(var(--cols), 1fr);
-        grid-template-rows: repeat(var(--rows), 1fr);
-        gap: 8px;
-      }
-
-      .dbui-inv-slot{
+      .dbui-nav-btn{
         appearance: none;
-        border: 1px dashed var(--dbui-inv-slot-stroke);
-        background: var(--dbui-inv-slot);
+        margin: 0;
+        padding: 6px 4px;
+        height: 44px;
+        border: 0;
         border-radius: 10px;
-        box-shadow: var(--dbui-inv-slot-shadow);
-        pointer-events: none; /* read-only placeholder */
+        background: transparent;
+        color: var(--dbui-text);
+        display: grid;
+        grid-template-columns: 22px auto;
+        justify-content: center;
+        align-items: center;
+        column-gap: 8px;
+        font: 600 12px/1 Inter, system-ui, sans-serif;
+        letter-spacing: .2px;
       }
+      .dbui-nav-btn svg{
+        width: 22px; height: 22px; display: block;
+        opacity: .92;
+      }
+      .dbui-nav-btn span{
+        white-space: nowrap;
+        opacity: .92;
+      }
+      .dbui-nav-btn:active{ transform: translateY(1px); }
+      .dbui-nav-btn:hover{ background: rgba(255,255,255,.06); }
+
+      .dbui-nav-btn--active{
+        background: rgba(255,255,255,.10);
+        outline: 1px solid rgba(255,255,255,.12);
+        box-shadow: inset 0 0 0 1px rgba(0,0,0,.15);
+      }
+
+      /* Icon coloring */
+      .dbui-nav-btn svg path{ fill: var(--dbui-subtle); }
+      .dbui-nav-btn--active svg path{ fill: var(--dbui-active); }
     `;
     const style = document.createElement('style');
-    style.id = 'dbui-inventory-styles';
+    style.id = 'dbui-navbar-styles';
     style.textContent = css;
     document.head.appendChild(style);
   }
 }
+
+// Minimal, clean SVGs (inline so no network cost)
+const svg = {
+  inventory: `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M7 7h10a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3v-7a3 3 0 0 1 3-3Zm1-4h8a1 1 0 0 1 1 1v2H7V4a1 1 0 0 1 1-1Zm3 9h2a1 1 0 0 1 0 2h-2a1 1 0 1 1 0-2Z"/>
+    </svg>
+  `,
+  skills: `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 2 9.8 8.2 3 9l5 3.9L6.6 20 12 16.7 17.4 20 16 12.9 21 9l-6.8-.8L12 2Z"/>
+    </svg>
+  `,
+  missions: `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M6 3h12a2 2 0 0 1 2 2v14l-4-3H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm3 5h6a1 1 0 1 1 0 2H9a1 1 0 1 1 0-2Zm0 4h4a1 1 0 1 1 0 2H9a1 1 0 1 1 0-2Z"/>
+    </svg>
+  `,
+  map: `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M9 3 3 5.5v15L9 18l6 2.5 6-2.5v-15L15 5.5 9 3Zm6 3.7 4-1.6v11.2l-4 1.6V6.7ZM5 7.1l4-1.6v11.2l-4 1.6V7.1Z"/>
+    </svg>
+  `
+};
