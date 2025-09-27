@@ -46,7 +46,6 @@ export default class CharacterMovement {
     // Ensure mixer once the character object exists; kick idle immediately.
     if (!this._mixer && this.player?.object) {
       this._mixer = new THREE.AnimationMixer(this.player.object);
-      // fire-and-forget idle start (guarded against double-start)
       this._startIdle().catch(() => {});
     }
     if (this._mixer) this._mixer.update(dt);
@@ -55,13 +54,13 @@ export default class CharacterMovement {
     this.camera?.update();
 
     if (this._path) {
-      // Advance to next waypoint once the player stops (reaches previous).
+      // Move along path: when we finish a segment, advance to the next.
       if (!this.player.isMoving()) {
         this._currentWaypointIndex++;
         if (this._currentWaypointIndex < this._path.length) {
           this.player.moveTo(this._path[this._currentWaypointIndex]);
         } else {
-          // Arrived
+          // Arrived at destination
           this._path = null;
           this.player.cancelActions();
           this._stopWalk();
@@ -69,7 +68,7 @@ export default class CharacterMovement {
         }
       }
     } else {
-      // No active path: ensure we're idling (if not moving for some reason)
+      // No active path: ensure we're idling if not moving
       if (!this.player.isMoving()) {
         if (this._walkPlaying) this._stopWalk();
         if (!this._idlePlaying) this._startIdle().catch(() => {});
@@ -156,16 +155,33 @@ export default class CharacterMovement {
     return clip;
   }
 
-  async _startIdle() {
+  async _ensureIdle() {
     await this._ensureMixer();
     if (!this._idleAction) {
       const clip = await this._loadClip(this.idleUrl);
       this._idleAction = this._mixer.clipAction(clip);
     }
-    if (!this._idlePlaying) {
-      this._idleAction.reset().setLoop(THREE.LoopRepeat).fadeIn(0.2).play();
-      this._idlePlaying = true;
+  }
+
+  async _ensureWalk() {
+    await this._ensureMixer();
+    if (!this._walkAction) {
+      const clip = await this._loadClip(this.walkUrl);
+      this._walkAction = this._mixer.clipAction(clip);
     }
+  }
+
+  async _startIdle() {
+    await this._ensureIdle();
+    // Make sure action is started before fading/crossfading
+    this._idleAction.reset().setLoop(THREE.LoopRepeat).play();
+    if (this._walkAction && this._walkPlaying) {
+      this._walkAction.crossFadeTo(this._idleAction, 0.2, true);
+      this._walkPlaying = false;
+    } else {
+      this._idleAction.fadeIn(0.2);
+    }
+    this._idlePlaying = true;
   }
 
   _stopIdle() {
@@ -174,20 +190,16 @@ export default class CharacterMovement {
   }
 
   async _startWalk() {
-    await this._ensureMixer();
-    if (!this._walkAction) {
-      const clip = await this._loadClip(this.walkUrl);
-      this._walkAction = this._mixer.clipAction(clip);
-    }
-    if (!this._walkPlaying) {
-      if (this._idleAction && this._idlePlaying) {
-        this._idleAction.crossFadeTo(this._walkAction, 0.2, true);
-      } else {
-        this._walkAction.reset().setLoop(THREE.LoopRepeat).fadeIn(0.2).play();
-      }
-      this._walkPlaying = true;
+    await this._ensureWalk();
+    // Start walk action first, then crossfade for reliability across three.js versions
+    this._walkAction.reset().setLoop(THREE.LoopRepeat).play();
+    if (this._idleAction && this._idlePlaying) {
+      this._idleAction.crossFadeTo(this._walkAction, 0.2, true);
       this._idlePlaying = false;
+    } else {
+      this._walkAction.fadeIn(0.2);
     }
+    this._walkPlaying = true;
   }
 
   _stopWalk() {
