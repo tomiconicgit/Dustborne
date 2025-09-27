@@ -86,10 +86,9 @@ export default class Character {
     this._path = null;
     this._currentWaypointIndex = 0;
     
-    // --- FIX: Rewritten animation state logic ---
     this._mixer = null;
-    this._actions = {}; // To hold 'idle', 'walk' actions
-    this._activeAction = null; // To track the currently playing animation
+    this._actions = {};
+    this._activeAction = null;
     
     this.touchState = { startTime: 0, startPos: new THREE.Vector2() };
 
@@ -146,7 +145,7 @@ export default class Character {
           this._moveTo(this._path[this._currentWaypointIndex]);
         } else {
           this._path = null;
-          this.setAnimation('idle'); // Use new animation handler
+          this.setAnimation('idle');
         }
       }
     }
@@ -188,11 +187,10 @@ export default class Character {
       this._path = path;
       this._currentWaypointIndex = 0;
       this._moveTo(this._path[0]);
-      this.setAnimation('walk'); // Use new animation handler
+      this.setAnimation('walk');
     }
   }
 
-  // --- FIX: Rewritten animation system ---
   async _loadAnimations() {
     const loader = new GLTFLoader();
     const [idleGltf, walkGltf] = await Promise.all([
@@ -203,23 +201,34 @@ export default class Character {
     this._actions.idle = this._mixer.clipAction(idleGltf.animations[0]);
     this._actions.walk = this._mixer.clipAction(walkGltf.animations[0]);
     
-    // Start with the idle animation
+    // FIX: Set all animations to loop continuously. This is the main fix.
+    Object.values(this._actions).forEach(action => {
+      action.setLoop(THREE.LoopRepeat);
+    });
+    
     this.setAnimation('idle');
   }
   
+  // FIX: More robust animation transition handler.
   setAnimation(name) {
     const newAction = this._actions[name];
-    if (newAction === this._activeAction) return;
-
-    // Fade out the previous action and fade in the new one
-    if (this._activeAction) {
-      newAction.crossFadeFrom(this._activeAction, 0.25, true);
+    if (newAction === this._activeAction) {
+        return;
     }
-    
-    newAction.play();
+
+    const oldAction = this._activeAction;
     this._activeAction = newAction;
+
+    if (oldAction) {
+        // Smoothly fade from the old action to the new one
+        this._activeAction.reset();
+        oldAction.crossFadeTo(this._activeAction, 0.25, true);
+        this._activeAction.play();
+    } else {
+        // If no animation is active, just play the new one
+        this._activeAction.reset().play();
+    }
   }
-  // --- End of animation system fix ---
   
   _onTouchStart(e) {
     if (e.touches.length === 1) {
