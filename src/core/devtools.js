@@ -17,6 +17,10 @@ export default class DevTools {
     this.group.visible = false;
     this.scene.add(this.group);
 
+    // Cache for generated text materials to optimize performance
+    this.labelMaterialCache = new Map();
+    this.labelGeometry = new THREE.PlaneGeometry(0.7, 0.7); // Shared geometry for all labels
+
     // Toggle button
     this.button = document.createElement('button');
     this.button.textContent = 'Grid';
@@ -43,15 +47,60 @@ export default class DevTools {
     domOverlayParent.appendChild(this.button);
   }
 
+  /**
+   * Creates and caches a material with the given text rendered on it.
+   */
+  getLabelMaterial(text) {
+    if (this.labelMaterialCache.has(text)) {
+      return this.labelMaterialCache.get(text);
+    }
+
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    const size = 128;
+    canvas.width = size;
+    canvas.height = size;
+
+    context.font = 'bold 52px Inter, sans-serif';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillStyle = '#f5eeda'; // Use theme's text color
+    context.fillText(text, size / 2, size / 2);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.needsUpdate = true;
+
+    const material = new THREE.MeshBasicMaterial({
+      map: texture,
+      transparent: true,
+      depthWrite: false, // Prevent z-fighting with ground
+      side: THREE.DoubleSide,
+    });
+
+    this.labelMaterialCache.set(text, material);
+    return material;
+  }
+
   clear() {
     while (this.group.children.length) {
       const c = this.group.children.pop();
       c.geometry?.dispose?.();
       if (c.material?.isMaterial) c.material.dispose();
+      // Also clear any nested groups
+      if (c.isGroup) {
+        c.clear();
+      }
     }
+    // Dispose cached materials and textures
+    this.labelMaterialCache.forEach((material) => {
+        material.map?.dispose();
+        material.dispose();
+    });
+    this.labelMaterialCache.clear();
   }
 
-  // Build grid lines + red X on blocked tiles
+  // Build grid lines, blocked tiles, and tile ID numbers
   build() {
     this.clear();
 
@@ -71,7 +120,6 @@ export default class DevTools {
     gridGeom.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
     const gridMat = new THREE.LineBasicMaterial({ color: 0x333333, transparent: true, opacity: 0.85 });
     const gridLines = new THREE.LineSegments(gridGeom, gridMat);
-    gridLines.renderOrder = 9999;
     this.group.add(gridLines);
 
     // Blocked markers (red X)
@@ -91,13 +139,28 @@ export default class DevTools {
       xGeom.setAttribute('position', new THREE.Float32BufferAttribute(xVerts, 3));
       const xMat = new THREE.LineBasicMaterial({ color: 0xff3333, transparent: true, opacity: 1.0 });
       const xLines = new THREE.LineSegments(xGeom, xMat);
-      xLines.renderOrder = 10000;
       this.group.add(xLines);
     }
+    
+    // Tile ID Labels
+    const labelsGroup = new THREE.Group();
+    labelsGroup.name = 'TileIDLabels';
+    this.world.tiles.forEach((tile, index) => {
+      const material = this.getLabelMaterial(String(index));
+      const mesh = new THREE.Mesh(this.labelGeometry, material);
+      
+      mesh.position.copy(tile.center);
+      mesh.position.y += 0.003; // Lift slightly above grid lines
+      mesh.rotation.x = -Math.PI / 2;
+      
+      labelsGroup.add(mesh);
+    });
+    this.group.add(labelsGroup);
   }
 
   dispose() {
     this.clear();
+    this.labelGeometry.dispose();
     this.scene.remove(this.group);
     this.button?.remove();
   }
