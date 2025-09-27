@@ -19,7 +19,6 @@ class WorldEngine {
     this.activeChunks = new Map();
     this.viewDistance = 2;
 
-    // Create shared resources for chunks
     this.sharedTileGeo = new THREE.PlaneGeometry(this.TILE_SIZE, this.TILE_SIZE).rotateX(-Math.PI / 2);
     this.materials = {
         sand: new THREE.MeshStandardMaterial({ color: '#C2B280', roughness: 1, metalness: 0 }),
@@ -63,7 +62,6 @@ class WorldEngine {
     for (const [key, {x, z}] of requiredChunks.entries()) {
         if (!this.activeChunks.has(key)) {
             this.getChunk(x, z).then(chunk => {
-                // Ensure chunk wasn't loaded by another request while we were waiting
                 if (requiredChunks.has(key) && !this.activeChunks.has(key)) {
                     chunk.show();
                     this.activeChunks.set(key, chunk);
@@ -138,7 +136,10 @@ export function show({ rootId = 'game-root', prewarmedState }) {
   viewport.setScene(scene);
   viewport.setCamera(camera.threeCamera);
   viewport.start();
+
   new CameraController(viewport.domElement, camera);
+  
+  // ** THE FIX **: Removed obsolete 'null' parameter and passed 'world' correctly.
   const movement = new CharacterMovement(viewport.domElement, { scene }, camera, character, world);
   const devtools = new DevTools(scene, world, root);
   
