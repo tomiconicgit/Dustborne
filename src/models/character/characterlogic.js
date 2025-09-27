@@ -84,7 +84,6 @@ export default class Character {
     this._walkPlaying = false;
     this._idlePlaying = false;
     
-    // Touch state is now simpler: just tracks start time and position for tap detection.
     this.touchState = { startTime: 0, startPos: new THREE.Vector2() };
 
     this.raycaster = new THREE.Raycaster();
@@ -112,7 +111,6 @@ export default class Character {
   
   _attachInputListeners() {
     const domElement = Viewport.instance.domElement;
-    // REMOVED 'touchmove' listener to resolve conflict with camera controls.
     domElement.addEventListener('touchstart', this._onTouchStart.bind(this), { passive: false });
     domElement.addEventListener('touchend', this._onTouchEnd.bind(this), { passive: false });
   }
@@ -130,7 +128,9 @@ export default class Character {
 
   update(dt) {
     if (!this.object) return;
+    
     this._updatePosition(dt);
+
     if (this._path) {
       if (!this._moving) {
         this._currentWaypointIndex++;
@@ -144,8 +144,12 @@ export default class Character {
     } else if (!this._moving && !this._idlePlaying) {
       this._startIdle();
     }
+    
     this._mixer?.update(dt);
     ChunkManager.instance?.update(this.object.position, this.viewDistance);
+
+    // FIX: Update the camera's position every frame to follow the character
+    Camera.main?.update();
   }
 
   _moveTo(point) {
@@ -216,10 +220,7 @@ export default class Character {
     this._walkPlaying = true;
   }
   
-  // --- REWRITTEN TOUCH LOGIC ---
-
   _onTouchStart(e) {
-    // Only respond to the first finger touching the screen
     if (e.touches.length === 1) {
       this.touchState.startTime = performance.now();
       this.touchState.startPos.set(e.touches[0].clientX, e.touches[0].clientY);
@@ -227,7 +228,6 @@ export default class Character {
   }
 
   _onTouchEnd(e) {
-    // Ensure this is the end of a single-finger touch
     if (e.touches.length > 0 || e.changedTouches.length !== 1) {
       return;
     }
@@ -236,12 +236,9 @@ export default class Character {
     const distance = this.touchState.startPos.distanceTo(endPos);
     const duration = performance.now() - this.touchState.startTime;
 
-    // Define what constitutes a "tap": short duration and minimal movement.
     const MAX_TAP_DURATION_MS = 300;
     const MAX_TAP_DISTANCE_PX = 10;
 
-    // If the touch gesture qualifies as a tap, handle the movement logic.
-    // Otherwise, do nothing and let the CameraController handle it as a drag.
     if (duration < MAX_TAP_DURATION_MS && distance < MAX_TAP_DISTANCE_PX) {
       this._handleTap(e.changedTouches[0]);
     }
