@@ -22,6 +22,8 @@ export default class GridToggle {
 
     this.group = new THREE.Group();
     this.group.name = 'DevGridOverlay';
+    // FIX: Make the entire grid system (lines and numbers) invisible to raycasting.
+    this.group.raycast = () => {};
     this.group.visible = false;
     this.scene.add(this.group);
 
@@ -37,10 +39,7 @@ export default class GridToggle {
     this.labelsGroup = new THREE.Group();
     this.labelsGroup.name = 'TileNumberLabels';
     this.labelsGroup.visible = false;
-    // FIX: Make the entire group of labels invisible to the raycaster.
-    this.labelsGroup.raycast = () => {};
     this.group.add(this.labelsGroup);
-
     this.labelMaterialCache = new Map();
     this.labelMeshPool = [];
     this.labelGeometry = new THREE.PlaneGeometry(0.7, 0.7);
