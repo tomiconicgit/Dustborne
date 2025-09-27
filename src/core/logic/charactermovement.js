@@ -4,7 +4,6 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { AStarPathfinder } from './pathfinding.js';
 
 export default class CharacterMovement {
-  // CHANGED: Simplified constructor, domElement and game scene are set later.
   constructor({ camera, player, world }) {
     this.domElement = null; // Will be set later
     this.game = { scene: player.scene }; // Get scene from player
@@ -32,7 +31,6 @@ export default class CharacterMovement {
     this._lastT = 0;
   }
   
-  // ADDED: Method to attach input listeners after the viewport is created.
   setDomElement(domElement) {
       this.domElement = domElement;
       this._onStart = this.onTouchStart.bind(this);
@@ -43,7 +41,6 @@ export default class CharacterMovement {
       this.domElement.addEventListener('touchend',   this._onEnd,   { passive: false });
   }
   
-  // ADDED: Method to explicitly start the animation loop.
   startTick() {
       if (this._running) return;
       this._running = true;
@@ -56,12 +53,12 @@ export default class CharacterMovement {
     const dt = Math.min(0.05, (t - this._lastT) / 1000);
     this._lastT = t;
     
-    // This now runs after prewarming, so the mixer is guaranteed to exist.
-    if (this._mixer) this._mixer.update(dt);
-
+    // --- UPDATE ORDER IS CRITICAL ---
+    // 1. First, update the character's physical position and camera.
     this.player?.update(dt);
     this.camera?.update();
 
+    // 2. Next, check the player's state and command animation changes.
     if (this._path) {
       if (!this.player.isMoving()) {
         this._currentWaypointIndex++;
@@ -74,9 +71,12 @@ export default class CharacterMovement {
         }
       }
     } else if (!this.player.isMoving()) {
-      // Make sure we end up in idle if nothing is happening
       if (!this._idlePlaying) this._startIdle().catch((err) => console.error('Failed to start idle:', err));
     }
+
+    // 3. Finally, update the animation mixer AFTER commands have been issued.
+    // This ensures state changes are processed in the same frame.
+    if (this._mixer) this._mixer.update(dt);
 
     requestAnimationFrame(this.tick.bind(this));
   }
@@ -167,7 +167,6 @@ export default class CharacterMovement {
     }
   }
 
-  // CHANGED: This is now called from worldengine's prewarm.
   async prewarmAnimations() {
     if (this._prewarmed) return;
     await Promise.all([this._ensureIdle(), this._ensureWalk()]);
